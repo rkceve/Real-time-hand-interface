@@ -16,15 +16,12 @@
 //      (prevents click-then-accidentally-click-again loops)
 
 import { playExit } from './audio.js';
+import { fmtPct, fmtCap, fmtEarn, rvolBin, capWeightedAvg } from '../util/fmt.js';
 
 const EXIT_DWELL_MS = 1200;        // bumped from 850 — relaxed-palm rest pose
                                     // is too easy to trigger accidentally at 850
 const OPEN_GUARD_MS = 1500;
 const REOPEN_COOLDOWN_MS = 700;
-
-function fmtCap(billion) {
-  return billion >= 1000 ? `$${(billion / 1000).toFixed(2)}T` : `$${billion.toFixed(0)}B`;
-}
 
 export function createFullscreen({ gestureState }) {
   const el = document.createElement('div');
@@ -64,15 +61,17 @@ export function createFullscreen({ gestureState }) {
     el.classList.remove('hidden');
 
     const stocks = [...panel.stocks].sort((a, b) => b.marketCap - a.marketCap);
-    const avg = stocks.reduce((a, b) => a + b.changePct, 0) / stocks.length;
+    // stocks is sorted desc by marketCap, so stocks[0] IS the max — no
+    // need to spread/reduce per row (was O(N²); now O(1) hoist + O(N) map).
+    const maxCap = stocks.length ? stocks[0].marketCap : 1;
+    const avgChg = capWeightedAvg(stocks, 'changePct') || 0;
     const totalCap = stocks.reduce((a, b) => a + b.marketCap, 0);
-    const maxCap = Math.max(...stocks.map(s => s.marketCap));
 
     el.querySelector('.fs-sector').textContent = panel.title;
     el.querySelector('.fs-stats').innerHTML = `
       <div class="stat"><span class="lbl">CONSTITUENTS</span><span class="val">${stocks.length}</span></div>
       <div class="stat"><span class="lbl">TOTAL MARKET CAP</span><span class="val">${fmtCap(totalCap)}</span></div>
-      <div class="stat"><span class="lbl">AVG CHANGE</span><span class="val ${avg >= 0 ? 'up' : 'down'}">${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%</span></div>
+      <div class="stat"><span class="lbl">AVG CHANGE · CAP-WTD</span><span class="val ${avgChg >= 0 ? 'up' : 'down'}">${fmtPct(avgChg)}</span></div>
     `;
     const header = `
       <div class="row header">
@@ -82,10 +81,35 @@ export function createFullscreen({ gestureState }) {
         <div>Cap $</div>
         <div>P/E</div>
         <div>Div %</div>
-        <div>52w hi/lo</div>
+        <div>52w Range</div>
+        <div>RVOL</div>
+        <div>Earn</div>
         <div>Chg %</div>
       </div>`;
-    el.querySelector('.fs-list').innerHTML = header + stocks.map(s => `
+
+    // 52w range bar: horizontal track from low52 (−x%) to high52 (+y%) anchored
+    // at "current" = 0. A tick marker on the zero line shows where price sits
+    // today. Replicates Bloomberg's "52w hi/lo bar" widget. The percentages
+    // already encode position because they're "% above/below current" — so
+    // tick at exactly 50% width is mathematically correct given a symmetric
+    // [−low52, +high52] domain centred on current.
+    function rangeBar(s) {
+      if (s.high52 == null || s.low52 == null) return '<span class="range-na">—</span>';
+      const span = s.low52 + s.high52;            // total range width %
+      const tickPct = (s.low52 / span) * 100;     // where "current" sits in the bar
+      return `
+        <div class="rngbar">
+          <div class="rngbar-track"></div>
+          <div class="rngbar-tick" style="left:${tickPct.toFixed(1)}%"></div>
+          <div class="rngbar-lbl rngbar-lo">${fmtPct(-s.low52, 0)}</div>
+          <div class="rngbar-lbl rngbar-hi">${fmtPct(s.high52, 0)}</div>
+        </div>`;
+    }
+
+    el.querySelector('.fs-list').innerHTML = header + stocks.map(s => {
+      const rvol = typeof s.rvol === 'number' ? s.rvol : null;
+      const rbin = rvolBin(rvol);
+      return `
       <div class="row">
         <div class="ticker">${s.id}</div>
         <div class="name">${s.name}</div>
@@ -93,11 +117,12 @@ export function createFullscreen({ gestureState }) {
         <div class="cap">${fmtCap(s.marketCap)}</div>
         <div class="pe">${s.pe != null ? s.pe.toFixed(1) : '—'}</div>
         <div class="div">${s.divY != null ? s.divY.toFixed(2) + '%' : '—'}</div>
-        <div class="range">${s.high52 != null && s.low52 != null
-          ? `−${s.low52.toFixed(0)}/+${s.high52.toFixed(0)}` : '—'}</div>
-        <div class="chg ${s.changePct >= 0 ? 'up' : 'down'}">${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}%</div>
-      </div>
-    `).join('');
+        <div class="range">${rangeBar(s)}</div>
+        <div class="rvol rvol-${rbin}">${rvol != null ? rvol.toFixed(2) + '×' : '—'}</div>
+        <div class="earn">${fmtEarn(s.earnDays)}</div>
+        <div class="chg ${s.changePct >= 0 ? 'up' : 'down'}">${fmtPct(s.changePct)}</div>
+      </div>`;
+    }).join('');
 
     return true;
   }

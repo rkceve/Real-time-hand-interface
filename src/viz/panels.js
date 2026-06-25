@@ -13,6 +13,7 @@
 // readability rather than the older muted pastel palette.
 
 import * as THREE from 'three';
+import { fmtPct, fmtCap, capWeightedAvg, rvolBin } from '../util/fmt.js';
 
 // ============================================================================
 // Geometry placement
@@ -54,7 +55,26 @@ const COLORS = {
   downBg: 'rgba(230, 85, 61, 0.14)',
   upBar: '#2dba6a',
   downBar: '#e6553d',
+  // RVOL heat-map palette — MUST match CSS .rvol-{alert,hot,normal,cold}
+  // in style.css so the same number renders the same colour on the canvas
+  // badge and in the fullscreen detail list.
+  rvolAlert:  '#ff8a3d',
+  rvolHot:    '#ffb000',
+  rvolNormal: '#6e6e76',
+  rvolCold:   'rgba(110, 110, 118, 0.55)',
 };
+
+// rvol bin → canvas fillStyle.  Mirrors rvolBin() in util/fmt.js, which
+// drives the fullscreen list.  Keep the two in lock-step.
+function rvolColor(rvol) {
+  switch (rvolBin(rvol)) {
+    case 'alert':  return COLORS.rvolAlert;
+    case 'hot':    return COLORS.rvolHot;
+    case 'normal': return COLORS.rvolNormal;
+    case 'cold':   return COLORS.rvolCold;
+    default:       return COLORS.dim;
+  }
+}
 
 // Texture resolution.  Kept at 960x600 for layout stability — all the
 // hardcoded text positions below were tuned at this resolution.  Texture
@@ -131,32 +151,33 @@ function drawSectorCanvas(sector, stocks) {
 
   drawChrome(ctx, W, H, sector, 'SECTOR');
 
-  const avg = stocks.reduce((a, b) => a + b.changePct, 0) / stocks.length;
+  // CAP-WEIGHTED average change (was naive arithmetic mean — pros call
+  // that out as an amateur tell because a +5% small-cap move pulls the
+  // sector summary while AAPL is flat, mathematically wrong for what
+  // users expect).
+  const avgChg = capWeightedAvg(stocks, 'changePct');
+  const avgPE  = capWeightedAvg(stocks, 'pe');
+  const avgDiv = capWeightedAvg(stocks, 'divY');
   const totalCap = stocks.reduce((a, b) => a + b.marketCap, 0);
   const ups = stocks.filter(s => s.changePct >= 0).length;
   const downs = stocks.length - ups;
-  const peVals = stocks.map(s => s.pe).filter(v => typeof v === 'number');
-  const divVals = stocks.map(s => s.divY).filter(v => typeof v === 'number');
-  const avgPE = peVals.length ? peVals.reduce((a, b) => a + b, 0) / peVals.length : null;
-  const avgDiv = divVals.length ? divVals.reduce((a, b) => a + b, 0) / divVals.length : null;
-  const capStr = totalCap >= 1000 ? `$${(totalCap / 1000).toFixed(2)}T` : `$${totalCap.toFixed(0)}B`;
 
-  // -- Big AVG CHANGE metric (hero number) --
+  // -- Big AVG CHANGE metric (hero number, cap-weighted) --
   const heroY = 145;
   ctx.fillStyle = COLORS.dim;
   ctx.font = '700 14px "SFMono-Regular", monospace';
-  ctx.fillText('AVG CHANGE', 54, heroY);
-  ctx.fillStyle = avg >= 0 ? COLORS.up : COLORS.down;
+  ctx.fillText('AVG CHANGE  · CAP-WTD', 54, heroY);
+  ctx.fillStyle = (avgChg || 0) >= 0 ? COLORS.up : COLORS.down;
   ctx.font = '700 56px "SFMono-Regular", monospace';
-  ctx.fillText(`${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%`, 54, heroY + 24);
+  ctx.fillText(fmtPct(avgChg || 0), 54, heroY + 24);
 
   // -- 4-stat secondary row: MKT CAP · AVG P/E · AVG DIV Y · BREADTH --
   const subY = 230;
   const cols = [
-    { x: 54,  lbl: 'MKT CAP',   val: capStr },
-    { x: 280, lbl: 'AVG P/E',   val: avgPE != null ? avgPE.toFixed(1) : '—' },
-    { x: 510, lbl: 'AVG DIV Y', val: avgDiv != null ? `${avgDiv.toFixed(2)}%` : '—' },
-    { x: 740, lbl: 'BREADTH',   val: null }, // custom breadth render below
+    { x: 54,  lbl: 'MKT CAP',    val: fmtCap(totalCap) },
+    { x: 280, lbl: 'AVG P/E',    val: avgPE != null ? avgPE.toFixed(1) : '—' },
+    { x: 510, lbl: 'AVG DIV Y',  val: avgDiv != null ? `${avgDiv.toFixed(2)}%` : '—' },
+    { x: 740, lbl: 'BREADTH',    val: null }, // custom split below
   ];
   for (const c of cols) {
     ctx.fillStyle = COLORS.dim;
@@ -168,7 +189,7 @@ function drawSectorCanvas(sector, stocks) {
       ctx.fillText(c.val, c.x, subY + 24);
     }
   }
-  // breadth — split colour up / down
+  // breadth — split colour up / down (true ratio)
   ctx.fillStyle = COLORS.up;
   ctx.font = '700 22px "SFMono-Regular", monospace';
   ctx.fillText(`${ups}↑`, 740, subY + 24);
@@ -196,15 +217,19 @@ function drawSectorCanvas(sector, stocks) {
   const points = 80;
   let v = 0.5;
   const series = [];
+  // avgSafe — capWeightedAvg can return null for an empty / all-skip set.
+  // The hero metric already guards with (avgChg || 0); the sparkline drift
+  // bias and colour gradient mirror it so all three render consistently.
+  const avgSafe = avgChg || 0;
   for (let i = 0; i < points; i++) {
-    v += (rand() - 0.5) * 0.10 + (avg / 100) * 0.05;
+    v += (rand() - 0.5) * 0.10 + (avgSafe / 100) * 0.05;
     v = Math.max(0.05, Math.min(0.95, v));
     series.push(v);
   }
-  const color = avg >= 0 ? COLORS.up : COLORS.down;
+  const color = avgSafe >= 0 ? COLORS.up : COLORS.down;
   // Filled gradient under line
   const fillGrad = ctx.createLinearGradient(0, sparkY, 0, sparkY + sparkH);
-  if (avg >= 0) {
+  if (avgSafe >= 0) {
     fillGrad.addColorStop(0, 'rgba(0, 255, 102, 0.32)');
     fillGrad.addColorStop(1, 'rgba(0, 255, 102, 0)');
   } else {
@@ -259,15 +284,26 @@ function drawSectorCanvas(sector, stocks) {
     // P/E badge (small, dim)
     if (typeof s.pe === 'number') {
       ctx.fillStyle = COLORS.dim;
-      ctx.font = '700 18px "SFMono-Regular", monospace';
-      ctx.fillText(`P/E ${s.pe.toFixed(1)}`, 620, y + 4);
+      ctx.font = '700 17px "SFMono-Regular", monospace';
+      ctx.fillText(`P/E ${s.pe.toFixed(1)}`, 600, y + 5);
     }
 
-    // Change %
+    // RVOL badge — 4-bin heat (alert / hot / normal / cold) via rvolBin
+    // in util/fmt.js; canvas colour mirrors the CSS .rvol-* classes the
+    // fullscreen list uses, so the same number renders identically here
+    // and there.  Pulling the binning out of inline thresholds also keeps
+    // the boundary constants in one place.
+    if (typeof s.rvol === 'number') {
+      ctx.fillStyle = rvolColor(s.rvol);
+      ctx.font = '700 17px "SFMono-Regular", monospace';
+      ctx.fillText(`${s.rvol.toFixed(2)}×`, 740, y + 5);
+    }
+
+    // Change % (true-minus formatting via fmtPct)
     ctx.font = '700 28px "SFMono-Regular", monospace';
     ctx.fillStyle = s.changePct >= 0 ? COLORS.up : COLORS.down;
     ctx.textAlign = 'right';
-    ctx.fillText(`${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}%`, W - 54, y);
+    ctx.fillText(fmtPct(s.changePct), W - 54, y);
     ctx.textAlign = 'left';
     y += 50;
   }
@@ -315,14 +351,11 @@ function drawTopListCanvas(title, stocks, direction) {
     ctx.font = '20px "SFMono-Regular", monospace';
     ctx.fillText(name, 300, y + 8);
 
-    // Change %
+    // Change % (true-minus, tabular)
     ctx.fillStyle = color;
     ctx.font = '700 36px "SFMono-Regular", monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(
-      `${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}%`,
-      W - 54, y - 1
-    );
+    ctx.fillText(fmtPct(s.changePct), W - 54, y - 1);
 
     y += 78;
   }
@@ -386,7 +419,7 @@ function drawHeatmapCanvas(title, stocks) {
 
     ctx.lineWidth = 2.5;
     ctx.font = '13px "SFMono-Regular", monospace';
-    const chgStr = `${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(1)}`;
+    const chgStr = fmtPct(s.changePct, 1);
     ctx.strokeText(chgStr, x + cellW / 2, y + cellH / 2 + 14);
     ctx.fillText(chgStr, x + cellW / 2, y + cellH / 2 + 14);
   }

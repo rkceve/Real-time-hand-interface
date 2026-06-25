@@ -277,7 +277,19 @@ export function createSettingsUI({ initial, onChange, allKeys = true }) {
     if (onChange) onChange(state, '*');
   }
 
+  // Programmatic setter so other modules (auto-perf-mode banner, hotkeys)
+  // can flip a setting without faking a DOM event.  Syncs the UI so the
+  // change is visible if the settings panel is open.
+  function set(key, value) {
+    if (!(key in state)) return false;
+    state[key] = value;
+    syncUi();
+    if (onChange) onChange(state, key);
+    saveSettings(state);
+    return true;
+  }
+
   syncUi();
 
-  return { state, show, hide, toggle, isVisible, applyAll, el: modal, chip };
+  return { state, show, hide, toggle, isVisible, applyAll, set, el: modal, chip };
 }

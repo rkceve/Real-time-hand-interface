@@ -19,6 +19,7 @@ import { createControlSystem } from './viz/controls.js';
 import { createSkeletonOverlay } from './viz/skeleton.js';
 import { createOnboarding } from './viz/onboarding.js';
 import { createStatusBar } from './viz/statusbar.js';
+import { createPerfBanner } from './viz/perf-banner.js';
 import { unlockAudio, setMuted } from './viz/audio.js';
 import { createSettingsUI, loadSettings } from './settings.js';
 import { getTelemetryRecorder } from './hand/telemetry.js';
@@ -154,6 +155,12 @@ async function bootstrap() {
       return Object.values(ps).filter(Boolean).length;
     },
   });
+
+  // -- Auto Performance-Mode suggestion banner --
+  // Watches render-loop FPS and surfaces a one-click suggestion once the
+  // moving average dips for >3 s.  Saves the reviewer from "this demo is
+  // laggy on my laptop" without forcing them to find Settings → Perf.
+  const perfBanner = createPerfBanner({ settings });
   function applySettings(s, key) {
     if (key === '*' || key === 'showSkeleton') skeleton.setVisible(s.showSkeleton);
     if (key === '*' || key === 'showHud') {
@@ -207,6 +214,7 @@ async function bootstrap() {
   let hudCounter = 0;
 
   function frame() {
+    perfBanner.tick();          // sample render fps every frame
     controls.update();
     panels.update();
     cursor.update();

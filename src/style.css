@@ -1,3 +1,17 @@
+/* ========= Global numeric typography ========= */
+/* Tabular-nums (fixed-width digits) so columns of numbers actually line
+   up vertically — the single biggest "designed-for-finance" cue.  Bloomberg
+   Prop was commissioned specifically for this. */
+.num,
+#hud-detail,
+#status-bar,
+.fs-list .row > div:not(.name):not(.bar),
+#info-panel .val,
+#info-panel .metrics .val {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
 /* ========= Tokens — pro-terminal palette ========= */
 /* De-AI'd: was monotone neon cyan-on-black (the unambiguous student-AI-
    demo signature). New base is warm-gray-on-near-black like Bloomberg /
@@ -40,7 +54,12 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--mono);
+  /* Pro split: sans is the default (labels, headings, body copy); mono is
+     applied only to numeric containers and identifiers (tickers, prices,
+     FPS, slider readouts).  Real fintech terminals (Bloomberg, IBKR TWS,
+     TradingView) all do this — mono-everything is the student-AI-demo tell. */
+  font-family: var(--sans);
+  font-feature-settings: "ss01" 1, "cv11" 1;  /* Inter: alt 1/4/7 + curved l */
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -184,7 +203,11 @@ body { cursor: none; }
   letter-spacing: 0.22em;
   font-size: 13px;
 }
-#hud-detail { white-space: pre; line-height: 1.65; }
+#hud-detail {
+  white-space: pre;
+  line-height: 1.65;
+  font-family: var(--mono);            /* numbers must be tabular */
+}
 
 /* ========= Help overlay (top-right) ========= */
 #help {
@@ -241,6 +264,7 @@ body { cursor: none; }
   font-weight: 700;
   letter-spacing: 0.18em;
   font-size: 11px;
+  font-family: var(--mono);             /* gesture name reads as an identifier */
 }
 .help-text .desc {
   color: var(--fg-dim);
@@ -431,6 +455,8 @@ body { cursor: none; }
   font-size: 22px;
   font-weight: 700;
   color: var(--fg);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 .fs-stats .val.up { color: var(--up); }
 .fs-stats .val.down { color: var(--down); }
@@ -445,8 +471,8 @@ body { cursor: none; }
 .fs-list::-webkit-scrollbar-thumb { background: rgba(95, 209, 255, 0.35); border-radius: 3px; }
 .fs-list .row {
   display: grid;
-  /* ticker · name · bar · cap · P/E · div · 52w · change% */
-  grid-template-columns: 64px 1fr 150px 80px 60px 60px 70px 70px;
+  /* ticker · name · bar · cap · P/E · div · 52w-rng · rvol · earn · chg% */
+  grid-template-columns: 60px 1fr 130px 76px 54px 56px 130px 56px 60px 70px;
   gap: 10px;
   align-items: center;
   padding: 9px 10px;
@@ -473,10 +499,58 @@ body { cursor: none; }
 .fs-list .cap { color: var(--fg-dim); text-align: right; font-family: var(--mono); }
 .fs-list .pe { color: var(--fg-dim); text-align: right; font-family: var(--mono); font-size: 12px; }
 .fs-list .div { color: var(--fg-dim); text-align: right; font-family: var(--mono); font-size: 12px; }
-.fs-list .range { color: var(--fg-dim); text-align: right; font-family: var(--mono); font-size: 11px; letter-spacing: -0.02em; }
+.fs-list .range { color: var(--fg-dim); font-family: var(--mono); font-size: 10px; letter-spacing: 0; }
+.fs-list .rvol { text-align: right; font-family: var(--mono); font-size: 12px; font-weight: 700; }
+.fs-list .rvol.rvol-alert  { color: #ff8a3d; }
+.fs-list .rvol.rvol-hot    { color: var(--warm, #ffb000); }
+.fs-list .rvol.rvol-normal { color: var(--fg-dim); }
+.fs-list .rvol.rvol-cold   { color: rgba(110, 110, 118, 0.55); }
+.fs-list .earn { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--fg-dim); }
 .fs-list .chg { text-align: right; font-weight: 700; font-family: var(--mono); }
 .fs-list .chg.up { color: var(--up); }
 .fs-list .chg.down { color: var(--down); }
+
+/* 52-week range bar — Bloomberg-style horizontal track + tick.
+   Domain is [−low52%, +high52%] with current price implicitly at 0;
+   tick position therefore encodes "how close to high vs low" today.
+   Replaces the prior "−x/+y" two-number text which forced readers to
+   mentally combine two values — the bar shows the same information
+   visually in one glance, which is the entire point. */
+.fs-list .rngbar {
+  position: relative;
+  height: 18px;
+  width: 100%;
+}
+.fs-list .rngbar-track {
+  position: absolute;
+  top: 8px; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    rgba(230, 85, 61, 0.55) 0%,
+    rgba(110, 110, 118, 0.30) 50%,
+    rgba(45, 186, 106, 0.55) 100%);
+  border-radius: 1px;
+}
+.fs-list .rngbar-tick {
+  position: absolute;
+  top: 3px;
+  width: 2px;
+  height: 12px;
+  background: var(--fg);
+  transform: translateX(-1px);
+  box-shadow: 0 0 4px rgba(200, 200, 208, 0.5);
+}
+.fs-list .rngbar-lbl {
+  position: absolute;
+  top: -2px;
+  font-size: 9px;
+  color: var(--fg-dim);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.fs-list .rngbar-lo { left: 0;  color: rgba(230, 85, 61, 0.85); }
+.fs-list .rngbar-hi { right: 0; color: rgba(45, 186, 106, 0.85); }
+.fs-list .range-na  { color: var(--fg-dim); }
 
 .fs-list .row.header {
   position: sticky;
@@ -605,7 +679,7 @@ body { cursor: none; }
   margin: 0 auto;
   background: transparent;
   color: var(--accent-bright);
-  font-family: var(--mono);
+  font-family: var(--sans);             /* button label, not numeric */
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 0.28em;
@@ -775,7 +849,7 @@ body { cursor: none; }
   padding: 24px 28px 20px;
   position: relative;
   box-shadow: 0 0 60px rgba(95, 209, 255, 0.22);
-  font-family: var(--mono);
+  font-family: var(--sans);             /* labels are body copy, not numeric */
   color: var(--fg);
 }
 .settings-card::before, .settings-card::after {
@@ -861,28 +935,71 @@ body { cursor: none; }
   top: 14px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(255, 34, 68, 0.92);
+  background: linear-gradient(180deg, rgba(40, 6, 12, 0.96), rgba(20, 4, 8, 0.96));
   color: #ffffff;
-  padding: 6px 16px;
-  border-radius: 2px;
+  padding: 9px 16px 8px;
+  border: 1px solid rgba(230, 85, 61, 0.65);
+  border-left: 3px solid var(--down);
+  border-radius: 4px;
   font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
+  font-size: 10.5px;
+  letter-spacing: 0.10em;
   z-index: 100;
   display: flex;
-  align-items: center;
-  gap: 9px;
-  box-shadow: 0 0 24px rgba(255, 34, 68, 0.55);
+  flex-direction: column;
+  gap: 6px;
+  min-width: 280px;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(230, 85, 61, 0.18);
   pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+#telemetry-indicator .ti-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#telemetry-indicator .ti-rec .ti-label {
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--down);
+}
+#telemetry-indicator .ti-rec .ti-dur,
+#telemetry-indicator .ti-rec .ti-frames {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+#telemetry-indicator .ti-rec .ti-frames { color: var(--fg-dim); margin-left: auto; }
+#telemetry-indicator .ti-fingers {
+  gap: 5px;
+  padding: 2px 0;
+}
+#telemetry-indicator .ti-finger {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+#telemetry-indicator .ti-finger.on {
+  background: var(--up);
+  border-color: var(--up);
+  box-shadow: 0 0 6px var(--up);
+}
+#telemetry-indicator .ti-hint {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
 }
 #telemetry-indicator .rec-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--down);
   animation: recPulse 1s ease-in-out infinite;
-  box-shadow: 0 0 6px #ffffff;
+  box-shadow: 0 0 6px var(--down);
 }
 @keyframes recPulse {
   0%, 100% { opacity: 0.35; }
@@ -957,6 +1074,8 @@ body { cursor: none; }
   font-size: 11px;
   color: var(--accent-bright);
   font-weight: 700;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .settings-section .row.segmented span:first-child {
@@ -1021,4 +1140,121 @@ body { cursor: none; }
   font-size: 10px;
   color: var(--fg-dim);
   letter-spacing: 0.18em;
+}
+
+/* ========= Auto Performance-Mode banner ========= */
+#perf-banner {
+  position: fixed;
+  /* Right-anchored, NOT centred.  Bottom-left holds the webcam preview
+     (#cam at left:16 width:200 → right edge 216 px) and bottom-right holds
+     the settings chip (right:16 width:42 → left edge vw−58).  A centred
+     banner geometrically cannot symmetrically clear 216 px + 58 px on a
+     viewport narrower than ~972 px, which would overlay the webcam on
+     every realistic split-screen demo.  Anchoring to the right side and
+     growing leftward keeps the banner in the empty right-of-cam region
+     for all viewports ≥ ~520 px, and the chip stays clickable underneath
+     because the banner sits 60+ px above it. */
+  bottom: 92px;
+  right: 80px;
+  left: auto;
+  transform: translate(0, 0);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 16px;
+  background: linear-gradient(180deg, rgba(38, 28, 12, 0.96), rgba(22, 16, 8, 0.96));
+  border: 1px solid var(--warm, #ffb000);
+  border-left: 3px solid var(--warm, #ffb000);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  z-index: 9;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 176, 0, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  /* 296 px reserve = 216 (cam) + 16 (gap) + 64 (chip column).  At vw ≥
+     836 px the banner reaches its natural 540 px max; below that it
+     shrinks but always sits between cam and chip. */
+  max-width: min(540px, calc(100vw - 296px));
+  /* Floor so the flex-shrink:0 icon + Enable button + dismiss × never
+     push the banner wider than its declared max — protects 320 px portrait
+     viewports from overflow. */
+  min-width: 0;
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+#perf-banner.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(0, 8px);
+}
+#perf-banner .pb-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--warm, #ffb000);
+  flex-shrink: 0;
+}
+#perf-banner .pb-icon svg { width: 100%; height: 100%; }
+#perf-banner .pb-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;             /* collapse cleanly when squeezed */
+}
+#perf-banner .pb-title {
+  font-weight: 700;
+  color: var(--warm, #ffb000);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#perf-banner .pb-detail {
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+  /* Cap detail text to 2 lines; ellipsis the rest.  On very narrow
+     viewports the icon + Enable button stay legible and the explanation
+     truncates instead of pushing the banner wider than max-width. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#perf-banner .pb-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+#perf-banner .pb-enable {
+  background: var(--warm, #ffb000);
+  color: #1a1209;
+  border: 0;
+  padding: 7px 14px;
+  font-weight: 700;
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+#perf-banner .pb-enable:hover { background: #ffd065; }
+#perf-banner .pb-dismiss {
+  background: transparent;
+  border: 1px solid rgba(255, 176, 0, 0.35);
+  color: var(--fg-dim);
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+#perf-banner .pb-dismiss:hover {
+  background: rgba(255, 176, 0, 0.10);
+  color: var(--fg);
 }

@@ -67,13 +67,36 @@ def enrich(stock: dict) -> dict:
     # see big absolute volume).
     vol = round(vol_base * (0.4 + cap / 1200) * rng.uniform(0.6, 1.6), 1)
 
+    # RVOL = relative volume vs 20-day average. Quiet day 0.5, normal 1.0,
+    # heated 1.5-2.5. Slight bias toward higher when |changePct| is big
+    # (moves and volume correlate).
+    chg = abs(stock.get("changePct", 0))
+    rvol_base = rng.uniform(0.55, 1.45) + min(0.9, chg * 0.25)
+    rvol = round(rvol_base, 2)
+
+    # Earnings calendar offset in trading days. Distributed -30 to +60
+    # so most names are "coming up" (positive) but a few just reported.
+    # Skew toward 14-45 days as the analyst-watch sweet spot.
+    earn_days = int(rng.choices(
+        population=[
+            rng.randint(-25, -5),    # just reported
+            rng.randint(-4, 5),      # this week
+            rng.randint(6, 21),      # next 1-3 weeks (most common)
+            rng.randint(22, 60),     # 1-2 months out
+        ],
+        weights=[1, 1, 3, 2],
+        k=1,
+    )[0])
+
     stock.update({
-        "pe":      pe,
-        "divY":    divY,
-        "beta":    beta,
-        "high52":  high52pct,   # percent above current
-        "low52":   low52pct,    # percent below current
-        "vol":     vol,         # millions of shares / day
+        "pe":       pe,
+        "divY":     divY,
+        "beta":     beta,
+        "high52":   high52pct,   # percent above current
+        "low52":    low52pct,    # percent below current
+        "vol":      vol,         # millions of shares / day
+        "rvol":     rvol,        # relative volume vs 20-day avg
+        "earnDays": earn_days,   # trading days to/from next earnings
     })
     return stock
 

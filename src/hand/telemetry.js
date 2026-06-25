@@ -90,12 +90,54 @@ class TelemetryRecorder {
       if (this._indicator) return;
       const el = document.createElement('div');
       el.id = 'telemetry-indicator';
-      el.innerHTML = '<span class="rec-dot"></span>REC · press R to stop';
+      el.innerHTML = `
+        <div class="ti-line ti-rec">
+          <span class="rec-dot"></span>
+          <span class="ti-label">REC</span>
+          <span class="ti-dur">00:00</span>
+          <span class="ti-frames">0 frames</span>
+        </div>
+        <div class="ti-line ti-fingers" title="Detected extended fingers">
+          <span class="ti-finger" data-f="thumb"></span>
+          <span class="ti-finger" data-f="index"></span>
+          <span class="ti-finger" data-f="middle"></span>
+          <span class="ti-finger" data-f="ring"></span>
+          <span class="ti-finger" data-f="pinky"></span>
+        </div>
+        <div class="ti-hint">R to stop · NDJSON download</div>
+      `;
       document.body.appendChild(el);
       this._indicator = el;
+      this._tickInterval = setInterval(() => this._tickIndicator(), 250);
     } else if (this._indicator) {
+      clearInterval(this._tickInterval);
+      this._tickInterval = null;
       this._indicator.remove();
       this._indicator = null;
+    }
+  }
+
+  _tickIndicator() {
+    if (!this._indicator || !this.recording) return;
+    const elapsed = (performance.now() - this.startMs) / 1000;
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const ss = String(Math.floor(elapsed % 60)).padStart(2, '0');
+    const dur = this._indicator.querySelector('.ti-dur');
+    const frames = this._indicator.querySelector('.ti-frames');
+    if (dur)    dur.textContent = `${mm}:${ss}`;
+    if (frames) frames.textContent = `${this.frames.length} frames`;
+
+    // Reflect the most recent frame's finger-state pattern as five lit /
+    // unlit dots — gives a live visual diagnostic that the per-finger
+    // 3-D cosine extension test is producing sensible decisions, without
+    // having to download and grep the ndjson.
+    // The tracker writes per-frame extension flags into the `ext` sub-object
+    // as {t,i,m,r,p}; map them to thumb/index/middle/ring/pinky dots.
+    const last = this.frames[this.frames.length - 1];
+    const dots = this._indicator.querySelectorAll('.ti-finger');
+    if (last && last.ext && dots.length === 5) {
+      const keys = ['t', 'i', 'm', 'r', 'p'];
+      keys.forEach((k, i) => dots[i].classList.toggle('on', !!last.ext[k]));
     }
   }
 }
