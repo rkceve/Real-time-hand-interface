@@ -19,10 +19,36 @@
 //   { type: 'result', landmarks: number[][3][], ts: number }
 //   { type: 'error', error: string }
 
-import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+// NOTE: We do NOT static-import '@mediapipe/tasks-vision' here.
+//
+// When Vite (dev-server or build) transforms vision_bundle.mjs, it breaks
+// the WASM module loader's `ModuleFactory` registration — even with
+// optimizeDeps.exclude set the bundle gets re-served with a ?v= cache key
+// and the internal factory wiring fails with "ModuleFactory not set."
+//
+// Loading the same file directly from the jsdelivr CDN side-steps Vite
+// entirely: the worker's dynamic import URL is passed through to the
+// browser unmodified, so vision_bundle.mjs executes against its original
+// emitted source.  Same package version (pinned), same code, just no
+// Vite/esbuild rewriting in between.
+const MEDIAPIPE_CDN =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs';
 
+let HandLandmarker = null;
+let FilesetResolver = null;
 let landmarker = null;
 let inFlight = false;
+
+async function loadMediaPipe() {
+  if (HandLandmarker && FilesetResolver) return;
+  console.info('[worker] dynamically importing MediaPipe from', MEDIAPIPE_CDN);
+  const mod = await import(/* @vite-ignore */ MEDIAPIPE_CDN);
+  HandLandmarker = mod.HandLandmarker;
+  FilesetResolver = mod.FilesetResolver;
+  if (!HandLandmarker || !FilesetResolver) {
+    throw new Error('MediaPipe CDN import did not expose HandLandmarker / FilesetResolver');
+  }
+}
 
 // MediaPipe sometimes rejects with non-Error objects (Emscripten-formatted
 // strings, plain objects with `printErr`, etc.) — these collapse to
@@ -39,6 +65,7 @@ function serializeError(err) {
 }
 
 async function createLandmarker(wasmUrl, modelUrl) {
+  await loadMediaPipe();
   console.info('[worker] FilesetResolver.forVisionTasks:', wasmUrl);
   const fileset = await FilesetResolver.forVisionTasks(wasmUrl);
   console.info('[worker] fileset ready, creating HandLandmarker with model:', modelUrl);
