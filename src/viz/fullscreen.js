@@ -74,12 +74,27 @@ export function createFullscreen({ gestureState }) {
       <div class="stat"><span class="lbl">TOTAL MARKET CAP</span><span class="val">${fmtCap(totalCap)}</span></div>
       <div class="stat"><span class="lbl">AVG CHANGE</span><span class="val ${avg >= 0 ? 'up' : 'down'}">${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%</span></div>
     `;
-    el.querySelector('.fs-list').innerHTML = stocks.map(s => `
+    const header = `
+      <div class="row header">
+        <div>Ticker</div>
+        <div>Name</div>
+        <div>Mkt Cap</div>
+        <div>Cap $</div>
+        <div>P/E</div>
+        <div>Div %</div>
+        <div>52w hi/lo</div>
+        <div>Chg %</div>
+      </div>`;
+    el.querySelector('.fs-list').innerHTML = header + stocks.map(s => `
       <div class="row">
         <div class="ticker">${s.id}</div>
         <div class="name">${s.name}</div>
         <div class="bar"><div class="bar-fill" style="width:${(s.marketCap / maxCap * 100).toFixed(1)}%"></div></div>
         <div class="cap">${fmtCap(s.marketCap)}</div>
+        <div class="pe">${s.pe != null ? s.pe.toFixed(1) : '—'}</div>
+        <div class="div">${s.divY != null ? s.divY.toFixed(2) + '%' : '—'}</div>
+        <div class="range">${s.high52 != null && s.low52 != null
+          ? `−${s.low52.toFixed(0)}/+${s.high52.toFixed(0)}` : '—'}</div>
         <div class="chg ${s.changePct >= 0 ? 'up' : 'down'}">${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}%</div>
       </div>
     `).join('');

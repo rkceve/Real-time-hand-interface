@@ -14,17 +14,19 @@
 //   Interaction: cursor sensitivity
 //   Panels:     gainers, losers, heatmap, sectorPulse
 
-// v2: rolled forward because precision-tuning changed the default cursorGain.
-// Existing v1 users will get the new defaults rather than carrying over a
-// gain that's too high for the new smoothing pipeline.
-const STORAGE_KEY = 'market-console-settings-v2';
+// v3: rolled forward for the de-AI visual overhaul (bloom default dropped
+// 0.32 → 0.15; without this bump, existing v2 users would still see the
+// old over-glowy look).
+const STORAGE_KEY = 'market-console-settings-v3';
 
 export const DEFAULTS = Object.freeze({
   showSkeleton: true,
   showHud: true,
   showHelp: true,
   audioEnabled: true,
-  bloomStrength: 0.32,
+  bloomStrength: 0.15,           // reduced from 0.32 — heavy bloom is the
+                                  // "sci-fi mockup" tell.  Pro terminals
+                                  // have no bloom; this leaves a faint glow.
   cursorGain: 1.0,
   theme: 'cyan',
   // When true, main.js applies a low-perf preset: drops renderer pixelRatio

@@ -1,16 +1,22 @@
-/* ========= Tokens (Bloomberg-on-black financial palette) ========= */
+/* ========= Tokens — pro-terminal palette ========= */
+/* De-AI'd: was monotone neon cyan-on-black (the unambiguous student-AI-
+   demo signature). New base is warm-gray-on-near-black like Bloomberg /
+   TradingView pro, with cyan reserved for live data values and amber as
+   the single signature accent for focus / selection. */
 :root {
-  --bg: #000000;
-  --fg: #f0f4fa;
-  --fg-dim: #7e8fa6;
-  --accent: #5fd1ff;
-  --accent-bright: #a0e5ff;
-  --warm: #ffce6e;
-  --up: #00ff66;      /* vivid trading-terminal green */
-  --down: #ff2244;    /* vivid trading-terminal red */
-  --panel-bg: rgba(6, 14, 26, 0.84);
-  --panel-border: rgba(95, 209, 255, 0.55);
-  --mono: 'SFMono-Regular', 'Menlo', 'Consolas', 'Roboto Mono', monospace;
+  --bg: #0a0a0c;                /* slightly warm black, not pure */
+  --fg: #c8c8d0;                /* warm off-white, not pure */
+  --fg-dim: #6e6e76;            /* warm gray, not blue-gray */
+  --accent: #38bdf8;            /* clean cyan — live numeric values only */
+  --accent-bright: #7dd3fc;
+  --warm: #ffb000;              /* amber — focus / selection / dwell ring */
+  --up: #2dba6a;                /* desaturated trading-terminal green */
+  --down: #e6553d;              /* desaturated trading-terminal red */
+  --panel-bg: rgba(19, 19, 22, 0.92);
+  --panel-border: rgba(120, 120, 130, 0.30);
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', 'Menlo',
+          'Consolas', 'Roboto Mono', monospace;
 }
 
 /* Accent themes — toggled by JS on <body> from the settings panel.
@@ -158,27 +164,19 @@ body { cursor: none; }
   position: absolute;
   top: 16px;
   left: 16px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   color: var(--fg-dim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 5;
   min-width: 180px;
-  box-shadow: 0 0 18px rgba(95, 209, 255, 0.1);
 }
-#hud::before, #hud::after {
-  content: '';
-  position: absolute;
-  width: 6px; height: 6px;
-  border: 1px solid var(--accent-bright);
-}
-#hud::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
-#hud::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+/* corner brackets removed — leftover from the AI-HUD look */
 #hud-status {
   color: var(--accent-bright);
   font-weight: 700;
@@ -194,26 +192,18 @@ body { cursor: none; }
   top: 16px;
   right: 16px;
   width: 240px;
-  padding: 14px 18px 16px;
+  padding: 12px 16px 14px;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 4px;
+  border-radius: 2px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 6;
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--fg-dim);
-  box-shadow: 0 0 22px rgba(95, 209, 255, 0.1);
 }
-#help::before, #help::after {
-  content: '';
-  position: absolute;
-  width: 6px; height: 6px;
-  border: 1px solid var(--accent-bright);
-}
-#help::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
-#help::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+/* corner brackets removed */
 .help-title {
   color: var(--accent-bright);
   font-weight: 700;
@@ -455,8 +445,9 @@ body { cursor: none; }
 .fs-list::-webkit-scrollbar-thumb { background: rgba(95, 209, 255, 0.35); border-radius: 3px; }
 .fs-list .row {
   display: grid;
-  grid-template-columns: 80px 1fr 220px 110px 90px;
-  gap: 14px;
+  /* ticker · name · bar · cap · P/E · div · 52w · change% */
+  grid-template-columns: 64px 1fr 150px 80px 60px 60px 70px 70px;
+  gap: 10px;
   align-items: center;
   padding: 9px 10px;
   border-bottom: 1px solid rgba(95, 209, 255, 0.08);
@@ -479,10 +470,29 @@ body { cursor: none; }
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-bright));
 }
-.fs-list .cap { color: var(--fg-dim); text-align: right; }
-.fs-list .chg { text-align: right; font-weight: 700; }
+.fs-list .cap { color: var(--fg-dim); text-align: right; font-family: var(--mono); }
+.fs-list .pe { color: var(--fg-dim); text-align: right; font-family: var(--mono); font-size: 12px; }
+.fs-list .div { color: var(--fg-dim); text-align: right; font-family: var(--mono); font-size: 12px; }
+.fs-list .range { color: var(--fg-dim); text-align: right; font-family: var(--mono); font-size: 11px; letter-spacing: -0.02em; }
+.fs-list .chg { text-align: right; font-weight: 700; font-family: var(--mono); }
 .fs-list .chg.up { color: var(--up); }
 .fs-list .chg.down { color: var(--down); }
+
+.fs-list .row.header {
+  position: sticky;
+  top: 0;
+  background: rgba(10, 10, 12, 0.95);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--fg-dim);
+  font-weight: 700;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.fs-list .row.header > div { text-align: right; }
+.fs-list .row.header > div:nth-child(1),
+.fs-list .row.header > div:nth-child(2) { text-align: left; }
 
 /* ========= MARKET CONSOLE — start overlay (fintech operator style) ========= */
 #overlay {
@@ -724,14 +734,7 @@ body { cursor: none; }
 }
 #settings-chip svg { width: 18px; height: 18px; }
 #settings-chip span { font-size: 9px; opacity: 0.7; }
-#settings-chip::before, #settings-chip::after {
-  content: '';
-  position: absolute;
-  width: 6px; height: 6px;
-  border: 1px solid var(--accent-bright);
-}
-#settings-chip::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
-#settings-chip::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+/* corner brackets removed from settings chip */
 #settings-chip:hover {
   background: rgba(95, 209, 255, 0.15);
   box-shadow: 0 0 18px rgba(95, 209, 255, 0.3);

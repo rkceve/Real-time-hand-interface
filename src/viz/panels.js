@@ -35,22 +35,25 @@ function ringPositions(n, radius, y = 0, phaseOffset = 0) {
 // Canvas drawing
 // ============================================================================
 
+// Mirrors :root CSS vars in style.css.  Pro-terminal palette — warm gray
+// chrome, cyan reserved for live values, amber for focus accent, desat
+// green/red so it looks like a paid tool rather than a CSS template.
 const COLORS = {
-  bgTop: 'rgba(6, 14, 26, 0.96)',
-  bgBot: 'rgba(0, 0, 0, 0.96)',
-  border: 'rgba(95, 209, 255, 0.65)',
-  bracket: 'rgba(160, 229, 255, 1.0)',
-  accent: '#a0e5ff',
-  dim: '#7e8fa6',
-  text: '#f0f4fa',
-  up: '#00ff66',           // vivid trading-terminal green
-  down: '#ff2244',         // vivid trading-terminal red
-  upGlow: 'rgba(0, 255, 102, 0.85)',
-  downGlow: 'rgba(255, 34, 68, 0.85)',
-  upBg: 'rgba(0, 255, 102, 0.16)',
-  downBg: 'rgba(255, 34, 68, 0.16)',
-  upBar: '#00ff66',
-  downBar: '#ff2244',
+  bgTop: 'rgba(22, 22, 26, 0.95)',
+  bgBot: 'rgba(10, 10, 12, 0.96)',
+  border: 'rgba(120, 120, 130, 0.40)',
+  bracket: 'rgba(180, 180, 190, 0.55)',   // dim gray, not bright cyan
+  accent: '#7dd3fc',
+  dim: '#6e6e76',
+  text: '#c8c8d0',
+  up: '#2dba6a',            // desaturated trading-terminal green
+  down: '#e6553d',          // desaturated trading-terminal red
+  upGlow: 'rgba(45, 186, 106, 0.7)',
+  downGlow: 'rgba(230, 85, 61, 0.7)',
+  upBg: 'rgba(45, 186, 106, 0.14)',
+  downBg: 'rgba(230, 85, 61, 0.14)',
+  upBar: '#2dba6a',
+  downBar: '#e6553d',
 };
 
 // Texture resolution.  Kept at 960x600 for layout stability — all the
@@ -73,10 +76,12 @@ function drawChrome(ctx, w, h, title, eyebrow) {
   ctx.lineWidth = 2;
   ctx.strokeRect(9, 9, w - 18, h - 18);
 
-  // Corner brackets
+  // Corner brackets — subtle alignment cue, not the visual identity.
+  // (Used to be 5px thick with 54px length, the Iron-Man-HUD overlay-pack
+  //  signature look that screams "AI-generated demo".)
   ctx.strokeStyle = COLORS.bracket;
-  ctx.lineWidth = 5;
-  const c = 54;
+  ctx.lineWidth = 1.5;
+  const c = 18;
   const corner = (x, y, dx, dy) => {
     ctx.beginPath();
     ctx.moveTo(x, y + dy * c);
@@ -130,32 +135,45 @@ function drawSectorCanvas(sector, stocks) {
   const totalCap = stocks.reduce((a, b) => a + b.marketCap, 0);
   const ups = stocks.filter(s => s.changePct >= 0).length;
   const downs = stocks.length - ups;
-
-  // 3-up stat row
-  const statY = 170;
-  ctx.fillStyle = COLORS.dim;
-  ctx.font = '18px "SFMono-Regular", monospace';
-  ctx.fillText('AVG', 54, statY);
-  ctx.fillStyle = avg >= 0 ? COLORS.up : COLORS.down;
-  ctx.font = '700 50px "SFMono-Regular", monospace';
-  ctx.fillText(`${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%`, 54, statY + 24);
-
-  ctx.fillStyle = COLORS.dim;
-  ctx.font = '18px "SFMono-Regular", monospace';
-  ctx.fillText('MKT CAP', 380, statY);
-  ctx.fillStyle = COLORS.text;
-  ctx.font = '700 40px "SFMono-Regular", monospace';
+  const peVals = stocks.map(s => s.pe).filter(v => typeof v === 'number');
+  const divVals = stocks.map(s => s.divY).filter(v => typeof v === 'number');
+  const avgPE = peVals.length ? peVals.reduce((a, b) => a + b, 0) / peVals.length : null;
+  const avgDiv = divVals.length ? divVals.reduce((a, b) => a + b, 0) / divVals.length : null;
   const capStr = totalCap >= 1000 ? `$${(totalCap / 1000).toFixed(2)}T` : `$${totalCap.toFixed(0)}B`;
-  ctx.fillText(capStr, 380, statY + 28);
 
+  // -- Big AVG CHANGE metric (hero number) --
+  const heroY = 145;
   ctx.fillStyle = COLORS.dim;
-  ctx.font = '18px "SFMono-Regular", monospace';
-  ctx.fillText('BREADTH', 690, statY);
+  ctx.font = '700 14px "SFMono-Regular", monospace';
+  ctx.fillText('AVG CHANGE', 54, heroY);
+  ctx.fillStyle = avg >= 0 ? COLORS.up : COLORS.down;
+  ctx.font = '700 56px "SFMono-Regular", monospace';
+  ctx.fillText(`${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%`, 54, heroY + 24);
+
+  // -- 4-stat secondary row: MKT CAP · AVG P/E · AVG DIV Y · BREADTH --
+  const subY = 230;
+  const cols = [
+    { x: 54,  lbl: 'MKT CAP',   val: capStr },
+    { x: 280, lbl: 'AVG P/E',   val: avgPE != null ? avgPE.toFixed(1) : '—' },
+    { x: 510, lbl: 'AVG DIV Y', val: avgDiv != null ? `${avgDiv.toFixed(2)}%` : '—' },
+    { x: 740, lbl: 'BREADTH',   val: null }, // custom breadth render below
+  ];
+  for (const c of cols) {
+    ctx.fillStyle = COLORS.dim;
+    ctx.font = '13px "SFMono-Regular", monospace';
+    ctx.fillText(c.lbl, c.x, subY);
+    if (c.val != null) {
+      ctx.fillStyle = COLORS.text;
+      ctx.font = '700 22px "SFMono-Regular", monospace';
+      ctx.fillText(c.val, c.x, subY + 24);
+    }
+  }
+  // breadth — split colour up / down
   ctx.fillStyle = COLORS.up;
-  ctx.font = '700 34px "SFMono-Regular", monospace';
-  ctx.fillText(`${ups}↑`, 690, statY + 32);
+  ctx.font = '700 22px "SFMono-Regular", monospace';
+  ctx.fillText(`${ups}↑`, 740, subY + 24);
   ctx.fillStyle = COLORS.down;
-  ctx.fillText(`${downs}↓`, 800, statY + 32);
+  ctx.fillText(`${downs}↓`, 815, subY + 24);
 
   // Sparkline (deterministic synthetic walk from sector hash)
   const sparkY = 296;
@@ -225,17 +243,27 @@ function drawSectorCanvas(sector, stocks) {
 
   let y = 432;
   for (const s of top) {
+    // Ticker
     ctx.fillStyle = COLORS.text;
     ctx.textAlign = 'left';
     ctx.font = '700 28px "SFMono-Regular", monospace';
     ctx.fillText(s.id, 54, y);
 
-    const nameMax = 28;
+    // Name (truncated)
+    const nameMax = 24;
     const name = s.name.length > nameMax ? s.name.slice(0, nameMax - 1) + '…' : s.name;
     ctx.fillStyle = COLORS.dim;
     ctx.font = '20px "SFMono-Regular", monospace';
     ctx.fillText(name, 180, y + 4);
 
+    // P/E badge (small, dim)
+    if (typeof s.pe === 'number') {
+      ctx.fillStyle = COLORS.dim;
+      ctx.font = '700 18px "SFMono-Regular", monospace';
+      ctx.fillText(`P/E ${s.pe.toFixed(1)}`, 620, y + 4);
+    }
+
+    // Change %
     ctx.font = '700 28px "SFMono-Regular", monospace';
     ctx.fillStyle = s.changePct >= 0 ? COLORS.up : COLORS.down;
     ctx.textAlign = 'right';
