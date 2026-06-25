@@ -239,44 +239,64 @@ async function bootstrap() {
 
   startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
-    startBtn.textContent = 'STARTING…';
     showOverlayError('');
 
     unlockAudio();
-    setMuted(!settings.state.audioEnabled);  // re-apply post-unlock
+    setMuted(!settings.state.audioEnabled);
 
+    // Stage 1: webcam permission + capture
+    startBtn.textContent = 'REQUESTING CAMERA…';
     try {
-      // Lower webcam resolution (480x360 instead of 640x480) — MediaPipe
-      // downsamples to 192x192 anyway, but the texture-upload cost scales
-      // with capture resolution.  On a CPU-only machine this is a free
-      // perf win, no accuracy hit.
       await startWebcam(video, { width: 480, height: 360 });
-      video.classList.add('ready');     // FOUC guard: reveal only when stream is live
+      video.classList.add('ready');
     } catch (err) {
       console.error('[bootstrap] getUserMedia failed', err);
       showOverlayError(
-        'Webcam access was denied. Click the camera icon in your address bar and allow access for this site, then reload.\n' +
-        'See the browser DevTools console (F12) for details.'
+        'Webcam access was denied.\n' +
+        '\n' +
+        '1. Click the camera icon in your browser address bar\n' +
+        '2. Set Camera to "Allow" for this site\n' +
+        '3. Reload (Ctrl+Shift+R) and click START again\n' +
+        '\n' +
+        'See DevTools console (F12) for technical details.'
       );
       startBtn.disabled = false;
       startBtn.textContent = 'START';
       return;
     }
+
+    // Stage 2: MediaPipe model load (first time downloads ~10 MB)
+    startBtn.textContent = 'LOADING HAND-TRACKING MODEL…';
+    // First-time load can take a few seconds on slow networks — surface a
+    // helpful hint after 4 s so the user doesn't think the app froze.
+    const slowHintTimer = setTimeout(() => {
+      if (startBtn.textContent.startsWith('LOADING')) {
+        startBtn.textContent = 'STILL LOADING… (FIRST-TIME DOWNLOAD)';
+      }
+    }, 4000);
 
     let tracker;
     try {
       tracker = await createHandTracker(gestureState, {});
     } catch (err) {
+      clearTimeout(slowHintTimer);
       console.error('[bootstrap] HandLandmarker init failed', err);
       const detail = err?.message || String(err);
       showOverlayError(
-        'Could not load the hand-tracking model: ' + detail +
-        '\nCheck your network and reload. See DevTools console (F12) for details.'
+        'Could not load the hand-tracking model.\n' +
+        '\n' +
+        'What to try:\n' +
+        '1. Reload (Ctrl+Shift+R) and click START again\n' +
+        '2. Check your internet connection\n' +
+        '3. If it keeps failing, try a different browser (Chrome / Edge)\n' +
+        '\n' +
+        'Technical: ' + detail
       );
       startBtn.disabled = false;
       startBtn.textContent = 'START';
       return;
     }
+    clearTimeout(slowHintTimer);
 
     tracker.start(video, {
       onFrame: (landmarks) => skeleton.draw(landmarks),

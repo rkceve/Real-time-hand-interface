@@ -638,6 +638,22 @@ body { cursor: none; }
   color: var(--fg-dim);
   text-align: center;
   text-transform: uppercase;
+  line-height: 1.7;
+}
+.overlay-footnote strong {
+  color: var(--accent-bright);
+  font-weight: 700;
+}
+.overlay-footnote kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(95, 209, 255, 0.18);
+  border: 1px solid rgba(95, 209, 255, 0.5);
+  border-radius: 2px;
+  color: var(--accent-bright);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0;
 }
 
 /* ========= Data-source caption (bottom-center, below the scene) ========= */
@@ -809,6 +825,22 @@ body { cursor: none; }
   cursor: pointer;
 }
 .settings-section .row.toggle span { flex: 1; }
+.settings-section .row.toggle span em {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--fg-dim);
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+}
+.settings-section .row.toggle.perf-mode {
+  padding: 8px 10px;
+  margin: 4px -10px;
+  background: rgba(255, 206, 110, 0.06);
+  border-left: 2px solid var(--warm);
+  border-radius: 0 2px 2px 0;
+}
 .settings-section .row.toggle input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;

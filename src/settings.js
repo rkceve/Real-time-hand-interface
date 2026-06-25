@@ -124,8 +124,12 @@ export function createSettingsUI({ initial, onChange, allKeys = true }) {
             ${THEME_LABELS.map(t => `<button data-value="${t.value}">${t.label}</button>`).join('')}
           </div>
         </div>
-        <div class="row toggle">
-          <input type="checkbox" data-key="performanceMode"><span>Performance Mode (disable bloom · low DPR)</span>
+        <div class="row toggle perf-mode">
+          <input type="checkbox" data-key="performanceMode">
+          <span>
+            Performance Mode
+            <em>— disables bloom + lowers pixel ratio. Recommended on integrated-GPU laptops if the cursor feels laggy.</em>
+          </span>
         </div>
       </div>
 
