@@ -63,13 +63,13 @@ body { cursor: none; }
   display: block;
 }
 
-/* ========= Webcam preview (bottom-left) ========= */
+/* ========= Webcam preview (bottom-left, lifted above status bar) ========= */
 #cam {
   position: absolute;
   width: 200px;
   height: 150px;
   left: 16px;
-  bottom: 16px;
+  bottom: 44px;     /* 28 px status bar + 16 px gap */
   border-radius: 4px;
   border: 1px solid rgba(95, 209, 255, 0.35);
   background: #000;
@@ -666,51 +666,61 @@ body { cursor: none; }
   letter-spacing: 0;
 }
 
-/* ========= Data-source caption (bottom-center, below the scene) ========= */
-#data-source {
-  position: absolute;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
+/* (Old #data-source caption removed — bottom status bar absorbs it.) */
+
+/* ========= Bottom status bar ========= */
+#status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: rgba(13, 13, 16, 0.92);
+  border-top: 1px solid var(--panel-border);
   font-family: var(--mono);
   font-size: 10.5px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.06em;
   color: var(--fg-dim);
-  text-transform: uppercase;
-  z-index: 5;
+  z-index: 6;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 6px 14px;
-  border-radius: 2px;
-  border: 1px solid rgba(95, 209, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
-#data-source .src-label {
-  color: var(--accent);
-  font-weight: 700;
-  margin-right: 8px;
-}
-#data-source .src-dot {
+#status-bar .sb-sep { opacity: 0.35; }
+#status-bar .sb-spacer { flex: 1; }
+#status-bar .sb-mkt { display: inline-flex; align-items: center; gap: 7px; }
+#status-bar .sb-dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--up);
-  margin-right: 6px;
-  vertical-align: middle;
-  animation: srcPulse 1.6s ease-in-out infinite;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--fg-dim);
 }
-@keyframes srcPulse {
-  0%, 100% { opacity: 0.4; }
+#status-bar .sb-dot.open {
+  background: var(--up);
+  box-shadow: 0 0 6px var(--up);
+  animation: sbPulse 2.2s ease-in-out infinite;
+}
+#status-bar .sb-dot.closed { background: var(--down); }
+#status-bar .sb-mkt-state { font-weight: 700; letter-spacing: 0.12em; }
+#status-bar .sb-clock { color: var(--fg); }
+#status-bar .sb-hand-fps,
+#status-bar .sb-gics-n,
+#status-bar .sb-data-label { color: var(--fg); }
+#status-bar .sb-data.real .sb-data-label { color: var(--up); }
+#status-bar .sb-data.sim .sb-data-label { color: var(--warm); }
+@keyframes sbPulse {
+  0%, 100% { opacity: 0.55; }
   50%      { opacity: 1; }
 }
 
 /* ========= Settings: chip + modal ========= */
 #settings-chip {
   position: fixed;
-  /* Bottom-right corner: independent of HUD/help visibility state.  Previous
-     "right: 270px" assumed help was always visible; toggling help off via
-     the settings panel itself left the chip floating in empty space. */
-  bottom: 16px;
+  /* Bottom-right corner, lifted to clear the status bar (28 px + 16 gap). */
+  bottom: 44px;
   right: 16px;
   z-index: 7;
   width: 42px;

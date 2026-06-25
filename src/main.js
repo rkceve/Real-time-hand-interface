@@ -18,6 +18,7 @@ import { createHelpOverlay } from './viz/help.js';
 import { createControlSystem } from './viz/controls.js';
 import { createSkeletonOverlay } from './viz/skeleton.js';
 import { createOnboarding } from './viz/onboarding.js';
+import { createStatusBar } from './viz/statusbar.js';
 import { unlockAudio, setMuted } from './viz/audio.js';
 import { createSettingsUI, loadSettings } from './settings.js';
 import { getTelemetryRecorder } from './hand/telemetry.js';
@@ -84,16 +85,7 @@ function updateHud(gestureState, fullscreenOpen, cursorState, dragging) {
     `cursor  ${cursorState}`;
 }
 
-function injectDataSourceLabel(stocksData) {
-  const el = document.createElement('div');
-  el.id = 'data-source';
-  const isReal = stocksData.dataSource && stocksData.dataSource !== 'synthetic';
-  const label = isReal
-    ? `${stocksData.dataSource} · ${stocksData.asOf}`
-    : 'Simulated market snapshot';
-  el.innerHTML = `<span class="src-dot"></span><span class="src-label">DATA</span>${label} · live tick simulation`;
-  document.body.appendChild(el);
-}
+// (Replaced by the bottom status bar — see createStatusBar in viz/statusbar.js)
 
 function perturbStocks(stocks) {
   // Very small drift so the panels feel alive without misrepresenting
@@ -115,8 +107,6 @@ async function bootstrap() {
   const sceneSys = createSceneSystem(canvas);
   createIcosphere(sceneSys.pivot, { radius: 5, detail: 1 });
   const panels = createPanels(stocksData.nodes, sceneSys.pivot, {});
-
-  injectDataSourceLabel(stocksData);
 
   // Periodic panel refresh — perturbs changePct values and re-renders
   // HALF the panels every 1 s (alternating parity).  Full pass completes
@@ -151,6 +141,18 @@ async function bootstrap() {
   const settings = createSettingsUI({
     initial: loadSettings(),
     onChange: applySettings,
+  });
+
+  // -- Bottom status bar (market clock, fps, GICS count, data source) --
+  // Depends on both gestureState and settings, so created after both exist.
+  // eslint-disable-next-line no-unused-vars
+  const statusBar = createStatusBar({
+    gestureState,
+    stocksData,
+    getEnabledGlobalCount: () => {
+      const ps = settings.state.panels || {};
+      return Object.values(ps).filter(Boolean).length;
+    },
   });
   function applySettings(s, key) {
     if (key === '*' || key === 'showSkeleton') skeleton.setVisible(s.showSkeleton);
