@@ -20,6 +20,7 @@ import { createSkeletonOverlay } from './viz/skeleton.js';
 import { createOnboarding } from './viz/onboarding.js';
 import { unlockAudio, setMuted } from './viz/audio.js';
 import { createSettingsUI, loadSettings } from './settings.js';
+import { getTelemetryRecorder } from './hand/telemetry.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -305,10 +306,21 @@ async function bootstrap() {
     onboarding.show();
   });
 
+  // Telemetry recorder — exposed for debugging via R key or window.__telemetry
+  const telemetry = getTelemetryRecorder();
+  if (typeof window !== 'undefined') window.__telemetry = telemetry;
+
   window.addEventListener('keydown', (e) => {
     // Esc handled: settings panel takes priority, then fullscreen
     if (e.key === 'Escape') {
       if (!settings.isVisible()) fullscreen.close();
+    }
+    // R toggles telemetry recording (ignore when typing into form fields)
+    if ((e.key === 'r' || e.key === 'R') && !e.repeat) {
+      const target = e.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      telemetry.toggle();
+      e.preventDefault();
     }
   });
 }

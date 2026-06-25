@@ -16,6 +16,7 @@ import { PinchDetector, PinchState } from './pinch.js';
 import {
   LM, detectFingerStates, isPointing, isAllExtended, HysteresisGate,
 } from './finger.js';
+import { getTelemetryRecorder } from './telemetry.js';
 
 const WASM_URL = `${import.meta.env.BASE_URL}wasm`;
 const MODEL_URL =
@@ -244,8 +245,49 @@ export async function createHandTracker(gestureState, opts = {}) {
       lastWristX = lm[LM.WRIST].x;
       lastWristY = lm[LM.WRIST].y;
 
+      // Telemetry — only does work when recording is on
+      const tele = getTelemetryRecorder();
+      if (tele.isRecording()) {
+        tele.record({
+          vt: +video.currentTime.toFixed(3),
+          fps: +gestureState.cameraFps.toFixed(1),
+          // Just key landmarks to keep file size manageable
+          tip: {
+            idx: [+lm[LM.INDEX_TIP].x.toFixed(4), +lm[LM.INDEX_TIP].y.toFixed(4)],
+            thb: [+lm[LM.THUMB_TIP].x.toFixed(4), +lm[LM.THUMB_TIP].y.toFixed(4)],
+            mcp: [+lm[LM.MIDDLE_MCP].x.toFixed(4), +lm[LM.MIDDLE_MCP].y.toFixed(4)],
+            wrt: [+lm[LM.WRIST].x.toFixed(4), +lm[LM.WRIST].y.toFixed(4)],
+          },
+          ext: {
+            i: states.index, m: states.middle, r: states.ring,
+            p: states.pinky, t: states.thumb,
+          },
+          isP: pointing,
+          isA: allExt,
+          ptA: pointingActive,
+          alA: allExtendedActive,
+          cur: [+gestureState.cursorX.toFixed(4), +gestureState.cursorY.toFixed(4)],
+          curA: gestureState.cursorActive,
+          edge: gestureState.cursorAtEdge,
+          pin: state,
+          rat: +pinchRatio.toFixed(3),
+          pinH: Math.round(gestureState.pinchHeldMs),
+          hp: true,
+        });
+      }
+
       if (onFrameCallback) onFrameCallback(lm, gestureState);
     } else {
+      // No hand detected this frame
+      const tele = getTelemetryRecorder();
+      if (tele.isRecording()) {
+        tele.record({
+          vt: +video.currentTime.toFixed(3),
+          fps: +gestureState.cameraFps.toFixed(1),
+          hp: false,
+        });
+      }
+
       missingFrames += 1;
       if (missingFrames === RESET_AFTER_MISSING_FRAMES) {
         cursorFilter.reset();

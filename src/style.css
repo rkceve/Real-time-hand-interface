@@ -841,6 +841,40 @@ body { cursor: none; }
   border-left: 2px solid var(--warm);
   border-radius: 0 2px 2px 0;
 }
+
+/* ========= Telemetry REC indicator ========= */
+#telemetry-indicator {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 34, 68, 0.92);
+  color: #ffffff;
+  padding: 6px 16px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-shadow: 0 0 24px rgba(255, 34, 68, 0.55);
+  pointer-events: none;
+}
+#telemetry-indicator .rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffffff;
+  animation: recPulse 1s ease-in-out infinite;
+  box-shadow: 0 0 6px #ffffff;
+}
+@keyframes recPulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
 .settings-section .row.toggle input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
