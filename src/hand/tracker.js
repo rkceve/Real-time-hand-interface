@@ -58,19 +58,23 @@ export async function createHandTracker(gestureState, opts = {}) {
     });
   }
 
+  // Delegate priority: CPU (XNNPack) first, GPU as fallback.  On machines
+  // without a dedicated GPU, the "GPU" delegate falls back to a weak iGPU
+  // or to a slow software path — XNNPack SIMD on CPU is typically faster.
+  // We can flip the order back if a future user has a dedicated GPU.
   let landmarker;
   try {
-    landmarker = await createWithDelegate('GPU');
-    console.info('[tracker] HandLandmarker ready (GPU delegate)');
-  } catch (gpuErr) {
-    console.warn('[tracker] GPU delegate failed, falling back to CPU:', gpuErr);
+    landmarker = await createWithDelegate('CPU');
+    console.info('[tracker] HandLandmarker ready (CPU delegate / XNNPack)');
+  } catch (cpuErr) {
+    console.warn('[tracker] CPU delegate failed, trying GPU:', cpuErr);
     try {
-      landmarker = await createWithDelegate('CPU');
-      console.info('[tracker] HandLandmarker ready (CPU delegate)');
-    } catch (cpuErr) {
-      console.error('[tracker] CPU delegate also failed:', cpuErr);
-      const cause = cpuErr?.message || gpuErr?.message || 'unknown';
-      throw new Error(`HandLandmarker init failed (GPU+CPU): ${cause}`);
+      landmarker = await createWithDelegate('GPU');
+      console.info('[tracker] HandLandmarker ready (GPU delegate)');
+    } catch (gpuErr) {
+      console.error('[tracker] GPU delegate also failed:', gpuErr);
+      const cause = gpuErr?.message || cpuErr?.message || 'unknown';
+      throw new Error(`HandLandmarker init failed (CPU+GPU): ${cause}`);
     }
   }
 

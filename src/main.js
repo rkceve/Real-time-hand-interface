@@ -246,7 +246,11 @@ async function bootstrap() {
     setMuted(!settings.state.audioEnabled);  // re-apply post-unlock
 
     try {
-      await startWebcam(video, { width: 640, height: 480 });
+      // Lower webcam resolution (480x360 instead of 640x480) — MediaPipe
+      // downsamples to 192x192 anyway, but the texture-upload cost scales
+      // with capture resolution.  On a CPU-only machine this is a free
+      // perf win, no accuracy hit.
+      await startWebcam(video, { width: 480, height: 360 });
       video.classList.add('ready');     // FOUC guard: reveal only when stream is live
     } catch (err) {
       console.error('[bootstrap] getUserMedia failed', err);
