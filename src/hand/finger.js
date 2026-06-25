@@ -16,33 +16,37 @@ export const LM = {
 };
 
 // Cosine-based "is the finger straight" check.  Uses the angle between
-// (PIP-MCP) and (TIP-PIP); larger cosine = straighter finger.
+// (PIP-MCP) and (TIP-PIP) in 3D; larger cosine = straighter finger.
 //
-// Combined with a length-ratio fallback that handles foreshortening when
-// the finger points directly at the camera (cosine is unreliable there
-// because both vectors collapse near zero magnitude in 2D projection).
-function fingerExtended(lm, mcpIdx, pipIdx, tipIdx, cosThreshold = 0.1) {
+// History: previous version had cosThreshold = 0.1 (84°) plus a length-
+// ratio fallback (`dTip > dMcp * 1.35`).  Telemetry (gesture-telemetry
+// 2026-06-25T18-09-08.ndjson, 218 frames) showed this was wildly over-
+// permissive: while the user was pointing with just their index finger,
+// middle / ring / pinky were flagged "extended" 62% / 70% / 83% of the
+// time, causing isPointing to fire only 19% of frames.  The length
+// fallback in particular was the killer — even curled fingertips can
+// land > 1.35× further from the wrist than their MCP because of fist
+// geometry.
+//
+// New approach: 3D cosine at threshold 0.5 (60°), no fallback.  3D
+// catches foreshortening when a finger points at the camera (z catches
+// what x/y collapses on).  0.5 means the finger must be visibly
+// straight, not just "not folded back."
+function fingerExtended(lm, mcpIdx, pipIdx, tipIdx, cosThreshold = 0.5) {
   const mcp = lm[mcpIdx], pip = lm[pipIdx], tip = lm[tipIdx];
-  const wrist = lm[LM.WRIST];
-
-  // Cosine check (works for most orientations)
-  const v1x = pip.x - mcp.x, v1y = pip.y - mcp.y;
-  const v2x = tip.x - pip.x, v2y = tip.y - pip.y;
-  const m1 = Math.hypot(v1x, v1y);
-  const m2 = Math.hypot(v2x, v2y);
-  if (m1 > 1e-5 && m2 > 1e-5) {
-    if ((v1x * v2x + v1y * v2y) / (m1 * m2) > cosThreshold) return true;
-  }
-
-  // Fallback: tip is markedly farther from wrist than MCP when extended,
-  // even when the finger is foreshortened.
-  const dMcp = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
-  const dTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-  return dTip > dMcp * 1.35;
+  const v1x = pip.x - mcp.x, v1y = pip.y - mcp.y, v1z = pip.z - mcp.z;
+  const v2x = tip.x - pip.x, v2y = tip.y - pip.y, v2z = tip.z - pip.z;
+  const m1 = Math.hypot(v1x, v1y, v1z);
+  const m2 = Math.hypot(v2x, v2y, v2z);
+  if (m1 < 1e-5 || m2 < 1e-5) return false;
+  const cos = (v1x * v2x + v1y * v2y + v1z * v2z) / (m1 * m2);
+  return cos > cosThreshold;
 }
 
+// Thumb threshold a bit looser — the thumb naturally bends sideways
+// and never gets as straight as the other fingers.
 function thumbExtended(lm) {
-  return fingerExtended(lm, LM.THUMB_MCP, LM.THUMB_IP, LM.THUMB_TIP, 0.0);
+  return fingerExtended(lm, LM.THUMB_MCP, LM.THUMB_IP, LM.THUMB_TIP, 0.3);
 }
 
 export function detectFingerStates(lm) {

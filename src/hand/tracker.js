@@ -32,14 +32,15 @@ function hypot(ax, ay, bx, by) {
 
 export async function createHandTracker(gestureState, opts = {}) {
   const {
-    // PRECISION TUNING (2026-06 — user reported cursor over-reaction).
-    // Lower minCutoff = HEAVIER baseline smoothing → much less stationary
-    // jitter.  Lower beta = filter loosens less aggressively on motion,
-    // i.e. keeps smoothing strong even when hand moves a bit.
-    cursorMinCutoff = 0.35,
-    cursorBeta = 0.04,
-    palmMinCutoff = 0.5,
-    palmBeta = 0.05,
+    // OneEuro tuning matched to the actual ~8 fps tracker rate observed
+    // in telemetry (was tuned for 30 fps before — way too smooth, cursor
+    // felt 400+ ms behind the hand).  minCutoff 1.5 → 100 ms time
+    // constant, matches the inter-detection gap so the filter passes
+    // through fresh samples instead of stalling between them.
+    cursorMinCutoff = 1.5,
+    cursorBeta = 0.07,
+    palmMinCutoff = 1.0,
+    palmBeta = 0.07,
   } = opts;
 
   console.info('[tracker] loading WASM from', WASM_URL);
@@ -81,15 +82,16 @@ export async function createHandTracker(gestureState, opts = {}) {
 
   const cursorFilter = new OneEuroFilter2D({ minCutoff: cursorMinCutoff, beta: cursorBeta });
   const palmFilter = new OneEuroFilter2D({ minCutoff: palmMinCutoff, beta: palmBeta });
-  // Hysteresis frames (assuming ~15–30 fps tracker):
-  //   - presence: ~200 ms in / 700 ms out
-  //   - pointing: ~330 ms in (deliberate — was 100 ms, caused false-positive
-  //                           cursor appearances during transitions) /
-  //               800 ms out (cursor sticks once shown)
-  //   - all-extended: 330 ms in / 270 ms out (exit gesture stays deliberate)
-  const presence = new HandPresenceTracker({ enterFrames: 3, exitFrames: 20 });
-  const pointingGate = new HysteresisGate({ enterFrames: 5, exitFrames: 24 });
-  const allExtendedGate = new HysteresisGate({ enterFrames: 5, exitFrames: 8 });
+  // Hysteresis frames retuned to the observed ~8 fps tracker rate:
+  //   - presence:  2 in / 12 out  → ~250 ms / ~1.5 s
+  //   - pointing:  2 in / 16 out  → ~250 ms / ~2 s
+  //                (was 5/24 = 625 ms/3 s; telemetry showed isPointing
+  //                 streaks rarely exceeded 4 frames so 5 was never
+  //                 reached — cursor never appeared)
+  //   - all-ext:   3 in / 6 out   → ~375 ms / ~750 ms
+  const presence = new HandPresenceTracker({ enterFrames: 2, exitFrames: 12 });
+  const pointingGate = new HysteresisGate({ enterFrames: 2, exitFrames: 16 });
+  const allExtendedGate = new HysteresisGate({ enterFrames: 3, exitFrames: 6 });
   const pinch = new PinchDetector({ closeRatio: 0.30, openRatio: 0.45 });
 
   let video = null;
@@ -329,11 +331,15 @@ export async function createHandTracker(gestureState, opts = {}) {
   };
 }
 
-export async function startWebcam(videoElement, { width = 640, height = 480 } = {}) {
+export async function startWebcam(videoElement, { width = 480, height = 360 } = {}) {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: {
       width: { ideal: width },
       height: { ideal: height },
+      // Cap framerate — when MediaPipe inference only sustains ~8 fps,
+      // having the browser decode 30 camera fps wastes CPU we need for
+      // inference + render.  ideal:15 keeps the video pipeline cheap.
+      frameRate: { ideal: 15, max: 20 },
       facingMode: 'user',
     },
     audio: false,
