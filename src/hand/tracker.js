@@ -1,15 +1,17 @@
-// MediaPipe HandLandmarker wrapper.
+// MediaPipe HandLandmarker wrapper, now driven by a Web Worker.
 //
-// Updates gestureState with the new (pinch-event-driven) shape every frame:
-//   - cursor 2D from index tip (OneEuro smoothed, edge fade)
-//   - pinch ratio + start/end edges + held duration
-//   - palm position (for pinch-drag rotation)
-//   - all-fingers-extended hysteresis + dwell timer (for fullscreen exit)
+// Architecture (mirrors gesture-window's Python camera-thread pattern):
+//   Main thread:   RAF loop → createImageBitmap(video) → postMessage to worker
+//                  Receives landmarks → OneEuro / hysteresis / state update
+//                  Three.js render runs uninterrupted at 60 fps
+//   Worker thread: MediaPipe detectForVideo (30–50 ms blocking) on a
+//                  separate CPU core, no impact on render
 //
-// An optional onFrame(landmarks, gestureState) callback receives the raw
-// (x-mirrored) landmarks every frame; the skeleton overlay uses it.
+// The post-processing (OneEuro filters, finger-state detection, hysteresis
+// gates, pinch state machine) STAYS on the main thread because it's cheap
+// (<1 ms total) and writes to the shared gestureState that the renderer
+// reads — keeping it inline avoids an extra round-trip.
 
-import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { OneEuroFilter2D } from './smoothing.js';
 import { HandPresenceTracker } from './presence.js';
 import { PinchDetector, PinchState } from './pinch.js';
@@ -31,57 +33,48 @@ function hypot(ax, ay, bx, by) {
 
 export async function createHandTracker(gestureState, opts = {}) {
   const {
-    // PRECISION TUNING (2026-06 — user reported cursor over-reaction).
-    // Lower minCutoff = HEAVIER baseline smoothing → much less stationary
-    // jitter.  Lower beta = filter loosens less aggressively on motion,
-    // i.e. keeps smoothing strong even when hand moves a bit.
     cursorMinCutoff = 0.35,
     cursorBeta = 0.04,
     palmMinCutoff = 0.5,
     palmBeta = 0.05,
   } = opts;
 
-  console.info('[tracker] loading WASM from', WASM_URL);
-  const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-  console.info('[tracker] WASM ready, fetching model from', MODEL_URL);
+  console.info('[tracker] spawning worker');
+  const worker = new Worker(
+    new URL('./tracker.worker.js', import.meta.url),
+    { type: 'module' }
+  );
 
-  async function createWithDelegate(delegate) {
-    return HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate },
-      runningMode: 'VIDEO',
-      // 2 hands so a non-dominant hand resting near the camera doesn't
-      // cause the model to flip the tracked hand each frame.  Greedy
-      // tracking below picks the one closest to the previous wrist position.
-      numHands: 2,
-      minHandDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-  }
+  worker.onerror = (e) => {
+    console.error('[tracker.worker] uncaught error:', e.message || e);
+  };
 
-  let landmarker;
-  try {
-    landmarker = await createWithDelegate('GPU');
-    console.info('[tracker] HandLandmarker ready (GPU delegate)');
-  } catch (gpuErr) {
-    console.warn('[tracker] GPU delegate failed, falling back to CPU:', gpuErr);
-    try {
-      landmarker = await createWithDelegate('CPU');
-      console.info('[tracker] HandLandmarker ready (CPU delegate)');
-    } catch (cpuErr) {
-      console.error('[tracker] CPU delegate also failed:', cpuErr);
-      const cause = cpuErr?.message || gpuErr?.message || 'unknown';
-      throw new Error(`HandLandmarker init failed (GPU+CPU): ${cause}`);
+  // -- Wait for worker init --
+  // The WASM path is resolved to an ABSOLUTE URL on the main thread
+  // because the worker runs from /assets/ and would resolve relative
+  // paths against its own location, not the document's.  Same reason
+  // model URL is fully qualified (https://...).
+  const wasmAbsolute = new URL(WASM_URL, window.location.href).href;
+
+  await new Promise((resolve, reject) => {
+    function onInit(e) {
+      const m = e.data;
+      if (m.type === 'ready') {
+        console.info('[tracker] worker ready, delegate:', m.delegate);
+        worker.removeEventListener('message', onInit);
+        resolve();
+      } else if (m.type === 'error') {
+        worker.removeEventListener('message', onInit);
+        reject(new Error(m.error));
+      }
     }
-  }
+    worker.addEventListener('message', onInit);
+    worker.postMessage({ type: 'init', wasmUrl: wasmAbsolute, modelUrl: MODEL_URL });
+  });
 
   const cursorFilter = new OneEuroFilter2D({ minCutoff: cursorMinCutoff, beta: cursorBeta });
   const palmFilter = new OneEuroFilter2D({ minCutoff: palmMinCutoff, beta: palmBeta });
-  // Hysteresis frames (assuming ~15–30 fps tracker):
-  //   - presence: ~200 ms in / 700 ms out
-  //   - pointing: ~330 ms in (deliberate — was 100 ms, caused false-positive
-  //                           cursor appearances during transitions) /
-  //               800 ms out (cursor sticks once shown)
-  //   - all-extended: 330 ms in / 270 ms out (exit gesture stays deliberate)
+
   const presence = new HandPresenceTracker({ enterFrames: 3, exitFrames: 20 });
   const pointingGate = new HysteresisGate({ enterFrames: 5, exitFrames: 24 });
   const allExtendedGate = new HysteresisGate({ enterFrames: 5, exitFrames: 8 });
@@ -94,9 +87,12 @@ export async function createHandTracker(gestureState, opts = {}) {
   let pinchStartTs = 0;
   let allExtendedStartTs = 0;
   let onFrameCallback = null;
-  let lastVideoTime = -1;
-  // Greedy hand tracking: remember last wrist position so we can pick the
-  // hand most similar to it when MediaPipe returns multiple.
+  let lastCapturedVideoTime = -1;
+  // Backpressure: only one frame in flight to the worker at a time.  If
+  // the worker takes longer than camera frame interval, we drop frames
+  // (better than queue buildup that adds latency).
+  let pendingFrame = false;
+  // Greedy single-hand selection memory
   let lastWristX = 0.5;
   let lastWristY = 0.5;
 
@@ -117,57 +113,32 @@ export async function createHandTracker(gestureState, opts = {}) {
     lastTickTs = nowMs;
   }
 
-  function loop() {
-    if (!video || video.readyState < 2) {
-      rafId = requestAnimationFrame(loop);
-      return;
-    }
-    // Skip redundant detection if the camera hasn't produced a new frame
-    // since last call.  The render loop in main.js continues to run at
-    // RAF rate (60 fps) and lerps gestureState smoothly between updates.
-    if (video.currentTime === lastVideoTime) {
-      rafId = requestAnimationFrame(loop);
-      return;
-    }
-    lastVideoTime = video.currentTime;
-
-    const nowMs = performance.now();
+  // -- Post-processing pipeline (runs on main thread when worker returns) --
+  function processLandmarks(rawList, nowMs) {
     tickFps(nowMs);
 
     let raw = null;
-    try {
-      const res = landmarker.detectForVideo(video, nowMs);
-      if (res?.landmarks?.length > 0) {
-        // Greedy single-hand selection: pick the hand whose wrist is closest
-        // to the previously tracked wrist.  Stops the cursor from jumping
-        // when a second hand briefly enters the frame.
-        if (res.landmarks.length === 1) {
-          raw = res.landmarks[0];
-        } else {
-          let bestIdx = 0;
-          let bestDist = Infinity;
-          for (let i = 0; i < res.landmarks.length; i++) {
-            const w = res.landmarks[i][0]; // wrist
-            // Compare in NON-mirrored space (MediaPipe native)
-            const dx = (1 - w.x) - lastWristX;
-            const dy = w.y - lastWristY;
-            const d = dx * dx + dy * dy;
-            if (d < bestDist) {
-              bestDist = d;
-              bestIdx = i;
-            }
-          }
-          raw = res.landmarks[bestIdx];
+    if (rawList && rawList.length > 0) {
+      if (rawList.length === 1) {
+        raw = rawList[0];
+      } else {
+        // Greedy: pick the hand whose wrist is closest to the last
+        // tracked wrist position (in mirrored coords).
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < rawList.length; i++) {
+          const w = rawList[i][0];
+          const dx = (1 - w.x) - lastWristX;
+          const dy = w.y - lastWristY;
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
+        raw = rawList[bestIdx];
       }
-    } catch (err) {
-      console.warn('[tracker] detectForVideo error', err);
     }
 
     if (raw) {
       missingFrames = 0;
-
-      // Mirror x to match the selfie-flipped video preview.
       const lm = raw.map(p => ({ x: 1 - p.x, y: p.y, z: p.z }));
 
       const states = detectFingerStates(lm);
@@ -177,7 +148,7 @@ export async function createHandTracker(gestureState, opts = {}) {
       const pointingActive = pointingGate.update(pointing);
       const allExtendedActive = allExtendedGate.update(allExt);
 
-      // -- Cursor (index-tip-driven, smoothed) --
+      // -- Cursor (index-tip-driven, OneEuro smoothed) --
       const [cx, cy] = cursorFilter.filter(
         [lm[LM.INDEX_TIP].x, lm[LM.INDEX_TIP].y],
         nowMs / 1000
@@ -186,7 +157,6 @@ export async function createHandTracker(gestureState, opts = {}) {
       gestureState.cursorY = Math.max(0, Math.min(1, cy));
       gestureState.cursorActive = pointingActive;
 
-      // Mark as "at edge" if raw fingertip is within 8% of frame border
       const edge = 0.08;
       gestureState.cursorAtEdge =
         lm[LM.INDEX_TIP].x < edge || lm[LM.INDEX_TIP].x > 1 - edge ||
@@ -220,7 +190,6 @@ export async function createHandTracker(gestureState, opts = {}) {
       gestureState.pinchHeldMs = state === PinchState.CLOSED
         ? nowMs - pinchStartTs : 0;
 
-      // -- All-fingers-extended dwell (exit fullscreen) --
       gestureState.modeIsPointing = pointingActive;
       gestureState.modeIsAllExtended = allExtendedActive;
       if (allExtendedActive) {
@@ -235,8 +204,6 @@ export async function createHandTracker(gestureState, opts = {}) {
       gestureState.handConfidence = 1.0;
       gestureState.lastUpdateMs = nowMs;
 
-      // Remember wrist for next-frame greedy hand selection.  Use the
-      // mirrored x so it matches the lm[] coordinate frame written above.
       lastWristX = lm[LM.WRIST].x;
       lastWristY = lm[LM.WRIST].y;
 
@@ -263,6 +230,47 @@ export async function createHandTracker(gestureState, opts = {}) {
       gestureState.lastUpdateMs = nowMs;
       if (onFrameCallback) onFrameCallback(null, gestureState);
     }
+  }
+
+  // -- Listen for landmark results from worker --
+  worker.addEventListener('message', (e) => {
+    const m = e.data;
+    if (m.type === 'result') {
+      pendingFrame = false;
+      processLandmarks(m.landmarks, performance.now());
+    } else if (m.type === 'error') {
+      console.warn('[tracker.worker] error:', m.error);
+      pendingFrame = false;
+    }
+  });
+
+  // -- Frame capture loop on main thread (very light) --
+  function loop() {
+    if (!video || video.readyState < 2) {
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
+    // Skip if no new camera frame OR worker still chewing
+    if (video.currentTime === lastCapturedVideoTime || pendingFrame) {
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
+    lastCapturedVideoTime = video.currentTime;
+
+    const ts = performance.now();
+    pendingFrame = true;
+
+    // createImageBitmap is asynchronous (~1 ms) and produces a
+    // transferable image we can move to the worker without copying.
+    createImageBitmap(video).then((bitmap) => {
+      worker.postMessage(
+        { type: 'frame', bitmap, ts },
+        [bitmap]
+      );
+    }).catch((err) => {
+      console.warn('[tracker] createImageBitmap failed:', err);
+      pendingFrame = false;
+    });
 
     rafId = requestAnimationFrame(loop);
   }
@@ -278,7 +286,8 @@ export async function createHandTracker(gestureState, opts = {}) {
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      landmarker.close();
+      try { worker.postMessage({ type: 'shutdown' }); } catch {}
+      worker.terminate();
     },
   };
 }
