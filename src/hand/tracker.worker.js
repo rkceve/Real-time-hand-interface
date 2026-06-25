@@ -39,10 +39,21 @@ let FilesetResolver = null;
 let landmarker = null;
 let inFlight = false;
 
+// Build the dynamic import via `new Function` so Vite's static analyser
+// cannot see the URL.  /* @vite-ignore */ on a plain `import(...)`
+// expression looks like it should be enough, but Vite's WORKER pipeline
+// in dev mode still wraps the URL with __vite__injectQuery(url, 'import')
+// which appends ?import and routes the request back through Vite's
+// transform layer — and that transform corrupts vision_bundle.mjs's
+// internal WASM-loader wiring (the "ModuleFactory not set" symptom).
+// new Function moves the entire import expression to runtime construction
+// so there is nothing for Vite to analyse or rewrite.
+const __runtimeImport = new Function('url', 'return import(url)');
+
 async function loadMediaPipe() {
   if (HandLandmarker && FilesetResolver) return;
   console.info('[worker] dynamically importing MediaPipe from', MEDIAPIPE_CDN);
-  const mod = await import(/* @vite-ignore */ MEDIAPIPE_CDN);
+  const mod = await __runtimeImport(MEDIAPIPE_CDN);
   HandLandmarker = mod.HandLandmarker;
   FilesetResolver = mod.FilesetResolver;
   if (!HandLandmarker || !FilesetResolver) {
