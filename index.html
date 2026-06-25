@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#02040a" />
+    <title>MARKET CONSOLE</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <video id="cam" playsinline muted autoplay></video>
+
+      <div id="hud">
+        <div id="hud-status">INITIALIZING</div>
+        <div id="hud-detail"></div>
+      </div>
+
+      <div id="overlay">
+        <div class="overlay-card">
+          <div class="overlay-eyebrow">SECTOR INTELLIGENCE · GESTURE OPERATOR UI</div>
+          <h1>Market Console</h1>
+          <p class="tagline">Single-camera. No mouse. Read the market with one hand.</p>
+
+          <div class="overlay-grid">
+            <div class="overlay-stat">
+              <div class="stat-lbl">SECTORS</div>
+              <div class="stat-val">8</div>
+            </div>
+            <div class="overlay-stat">
+              <div class="stat-lbl">CONSTITUENTS</div>
+              <div class="stat-val">64</div>
+            </div>
+            <div class="overlay-stat">
+              <div class="stat-lbl">INPUT</div>
+              <div class="stat-val">RGB · HAND</div>
+            </div>
+          </div>
+
+          <div class="instructions">
+            <div class="row"><span class="lbl">POINT</span><span>Extend your index finger to move the cursor</span></div>
+            <div class="row"><span class="lbl">PINCH</span><span>Pinch over a panel to open its detail view</span></div>
+            <div class="row"><span class="lbl">PINCH + DRAG</span><span>Pinch in empty space and drag to rotate the sphere</span></div>
+            <div class="row"><span class="lbl">5 FINGERS</span><span>Spread all five fingers and hold for 1.2 seconds to close</span></div>
+          </div>
+
+          <p class="overlay-footnote">Single RGB webcam · works in Chrome / Edge on desktop · best with good lighting</p>
+
+          <button id="start-btn">ENTER CONSOLE</button>
+          <p class="error" id="overlay-error"></p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
