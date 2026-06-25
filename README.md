@@ -10,7 +10,11 @@
 
 ## Why
 
-Professional traders use multiple monitors because a 2D screen with a mouse can't scan multidimensional market data. Market Console collapses that idea into one screen and one hand — point to highlight, pinch to drill in, drag in empty space to rotate.
+Market Console is one application surface on top of a **general gesture-interaction layer** — a single RGB webcam → MediaPipe hand-pose → custom OneEuro + magnet + dwell cursor system. Finance was picked for the showcase because it has the loudest "I need to scan many things at once" workflow, but the same engine applies anywhere the mouse is wrong for the task.
+
+**Why finance for the demo.** Professional traders use multiple monitors because a 2D screen + mouse can't scan multidimensional market data. Market Console collapses that into one screen + one hand: point to highlight a sector, pinch to drill in, drag in empty space to rotate the whole view.
+
+**Where else this works.** The strongest second domain isn't "another dashboard" — it's **sterile-field medical imaging** (interventional radiology, surgical navigation). When a scrubbed-in surgeon needs to manipulate an image, the mouse genuinely fails; touchless gesture is the documented mitigation (peer-reviewed work uses the exact same MediaPipe + RGB webcam stack). The gesture layer here would port directly. Other plausible targets where touchless beats touch: cleanroom inspection, exhibit / museum kiosks, cooking-mode recipe screens. Finance is the loud one; the layer is general.
 
 The aim isn't to replace a Bloomberg terminal. The aim is to show that single-RGB-webcam hand input is precise enough for a real information surface, not just a tech demo.
 
