@@ -4,7 +4,7 @@ Control a 3D financial dashboard with your hand — point, hover, and pinch in f
 
 Submission for **Youth Code x AI 2026**.
 
-- **Live demo:** _(deploy URL goes here once Vercel is connected)_
+- **Live demo:** https://real-time-hand-interface.vercel.app
 - **Source:** https://github.com/rkceve/Real-time-hand-interface
 
 ---
