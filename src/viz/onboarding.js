@@ -29,14 +29,14 @@ export function createOnboarding({ gestureState }) {
           <circle class="ob-pinch-dot" cx="42" cy="80" r="4" fill="currentColor" opacity="0"/>
         </svg>
       </div>
-      <div class="ob-title">POINT &nbsp;·&nbsp; PINCH &nbsp;·&nbsp; SELECT</div>
+      <div class="ob-title">POINT &nbsp;·&nbsp; HOLD &nbsp;·&nbsp; PINCH-DRAG</div>
       <div class="ob-rows">
         <div class="ob-row"><span class="lbl">Index finger</span><span>Move the cursor</span></div>
-        <div class="ob-row"><span class="lbl">Pinch over panel</span><span>Open detail view</span></div>
-        <div class="ob-row"><span class="lbl">Pinch + drag in empty space</span><span>Rotate the sphere</span></div>
-        <div class="ob-row"><span class="lbl">Spread 5 fingers · hold 1.2s</span><span>Close detail view</span></div>
+        <div class="ob-row"><span class="lbl">Hold on panel ~0.9 s</span><span>Open detail view</span></div>
+        <div class="ob-row"><span class="lbl">Pinch + drag</span><span>Rotate the sphere</span></div>
+        <div class="ob-row"><span class="lbl">Spread 5 fingers · hold 1.2 s</span><span>Close detail view</span></div>
       </div>
-      <div class="ob-dismiss">Try a pinch to dismiss · auto-hides in 12s</div>
+      <div class="ob-dismiss">Try a pinch to dismiss · auto-hides in 12 s</div>
     </div>
   `;
   document.body.appendChild(el);

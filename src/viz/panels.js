@@ -13,7 +13,7 @@
 // readability rather than the older muted pastel palette.
 
 import * as THREE from 'three';
-import { fmtPct, fmtCap, capWeightedAvg, rvolBin } from '../util/fmt.js';
+import { fmtPct, fmtCap, capWeightedAvg, capWeightedHarmonic, rvolBin } from '../util/fmt.js';
 
 // ============================================================================
 // Geometry placement
@@ -156,7 +156,10 @@ function drawSectorCanvas(sector, stocks) {
   // sector summary while AAPL is flat, mathematically wrong for what
   // users expect).
   const avgChg = capWeightedAvg(stocks, 'changePct');
-  const avgPE  = capWeightedAvg(stocks, 'pe');
+  // P/E is a ratio — use cap-weighted HARMONIC mean (Σcap / Σ(cap/pe)).
+  // This matches how S&P / Bloomberg report index P/E.  Arithmetic
+  // cap-weighting over-weights high-multiple names.
+  const avgPE  = capWeightedHarmonic(stocks, 'pe');
   const avgDiv = capWeightedAvg(stocks, 'divY');
   const totalCap = stocks.reduce((a, b) => a + b.marketCap, 0);
   const ups = stocks.filter(s => s.changePct >= 0).length;
@@ -565,7 +568,12 @@ function buildPanelDefs(stocks) {
         const ss = stocks.filter(s => s.sector === sec);
         return {
           sector: sec,
-          avgChange: ss.reduce((a, b) => a + b.changePct, 0) / ss.length,
+          // Cap-weighted to match the per-sector hero metric in the lower
+          // ring.  Naive arithmetic mean here had the Sector Pulse panel
+          // visibly disagreeing with the sector summary panel for the same
+          // sector — the documented amateur-tell this codebase is supposed
+          // to neutralise.
+          avgChange: capWeightedAvg(ss, 'changePct') ?? 0,
           count: ss.length,
         };
       })

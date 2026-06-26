@@ -2,7 +2,8 @@
 //
 //   webcam → MediaPipe HandLandmarker → gestureState
 //          → cursor (5-state machine + magnet + dwell + velocity extrapolation)
-//          → pinch routing: over panel = click, over empty = drag rotate
+//          → pinch routing: every pinch starts a drag-rotate; panels are
+//            opened exclusively by the dwell-click (hover-and-hold) path
 //          → fullscreen exit on 5-finger dwell or Esc
 //          → settings panel (S key) for runtime customization
 
@@ -20,6 +21,7 @@ import { createSkeletonOverlay } from './viz/skeleton.js';
 import { createOnboarding } from './viz/onboarding.js';
 import { createStatusBar } from './viz/statusbar.js';
 import { createPerfBanner } from './viz/perf-banner.js';
+import { createMouseFallback } from './viz/mouse-fallback.js';
 import { unlockAudio, setMuted } from './viz/audio.js';
 import { createSettingsUI, loadSettings } from './settings.js';
 import { getTelemetryRecorder } from './hand/telemetry.js';
@@ -73,29 +75,63 @@ function updateHud(gestureState, fullscreenOpen, cursorState, dragging) {
   const pinchMs = gestureState.pinchHeldMs > 0
     ? `${Math.round(gestureState.pinchHeldMs)}ms`
     : '—';
-  const latMed = gestureState.latencyMedianMs > 0
-    ? `${Math.round(gestureState.latencyMedianMs)}`
+  const freshMed = gestureState.cursorFreshnessMedianMs > 0
+    ? `${Math.round(gestureState.cursorFreshnessMedianMs)}`
     : '—';
-  const latP95 = gestureState.latencyP95Ms > 0
-    ? `${Math.round(gestureState.latencyP95Ms)}`
+  const freshP95 = gestureState.cursorFreshnessP95Ms > 0
+    ? `${Math.round(gestureState.cursorFreshnessP95Ms)}`
     : '—';
+  // "fresh" = cursor freshness: how stale the rendered cursor anchor is
+  // vs the most recent tracker write.  NOT total detect-to-render.
   detail.textContent =
     `cam     ${fps} fps\n` +
-    `lat     ${latMed} / ${latP95} ms\n` +
+    `fresh   ${freshMed} / ${freshP95} ms\n` +
     `pinch   ${gestureState.pinchState}  ${pinchMs}\n` +
     `cursor  ${cursorState}`;
 }
 
 // (Replaced by the bottom status bar — see createStatusBar in viz/statusbar.js)
 
-function perturbStocks(stocks) {
-  // Very small drift so the panels feel alive without misrepresenting
-  // the underlying snapshot — each call moves changePct by ±0.04% on a
-  // uniform random walk, clamped to ±10% so values stay in plausible range.
+// Seeded PRNG (mulberry32) — keeps the live-tick simulation deterministic
+// across reloads of the same tick index.  The previous Math.random()-based
+// implementation drifted off-baseline cumulatively and showed different
+// numbers to two viewers loading the page at the same instant — both bad
+// finance-product behaviours.
+function mulberry32(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Visible-but-bounded oscillation around the BAKED baseline changePct from
+// stocks.json.  Each ticker keeps its baseline in `_baselineChangePct` set
+// once at boot; per-tick we re-derive changePct = baseline + bounded noise,
+// so the snapshot is never cumulatively drifted away from the source data.
+//   - Deterministic per (tickIndex, ticker)  — two viewers see the same tick
+//   - Non-destructive                        — baseline preserved
+//   - Amplitude 0.4 pp instead of 0.04 pp    — visibly alive over 30 s
+const PERTURB_AMPLITUDE_PP = 0.40;
+
+function perturbStocks(stocks, tickIndex) {
   for (const s of stocks) {
-    s.changePct += (Math.random() - 0.5) * 0.08;
-    if (s.changePct > 10) s.changePct = 10;
-    if (s.changePct < -10) s.changePct = -10;
+    if (s._baselineChangePct == null) s._baselineChangePct = s.changePct;
+  }
+  const tickerHash = (t) => {
+    let h = 0;
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) & 0xFFFFFFFF;
+    return h >>> 0;
+  };
+  for (const s of stocks) {
+    const rng = mulberry32(((tickIndex * 0x9E3779B1) ^ tickerHash(s.id)) >>> 0);
+    const noise = (rng() - 0.5) * 2 * PERTURB_AMPLITUDE_PP;
+    let v = s._baselineChangePct + noise;
+    if (v > 10) v = 10;
+    if (v < -10) v = -10;
+    s.changePct = v;
   }
 }
 
@@ -113,12 +149,23 @@ async function bootstrap() {
   // HALF the panels every 1 s (alternating parity).  Full pass completes
   // every 2 s but the texture-upload cost is half as tall per tick, which
   // eliminates the visible frame-budget spike on integrated GPUs.
+  //
+  // Gated: the interval and the 60 fps animation loop both stay OFF until
+  // the user clicks START.  Otherwise an integrated-GPU laptop showing the
+  // splash screen would burn full DPR + bloom + per-second canvas repaint
+  // for nothing, spin the fan, and prime the reviewer's "this demo is
+  // laggy" reflex before they ever consent to webcam access.
   let refreshParity = 0;
-  setInterval(() => {
-    perturbStocks(stocksData.nodes);
-    panels.refreshHalf(refreshParity);
-    refreshParity = (refreshParity + 1) & 1;
-  }, 1000);
+  let perturbTick = 0;
+  let perturbIntervalId = null;
+  function startPerturbInterval() {
+    if (perturbIntervalId != null) return;
+    perturbIntervalId = setInterval(() => {
+      perturbStocks(stocksData.nodes, ++perturbTick);
+      panels.refreshHalf(refreshParity);
+      refreshParity = (refreshParity + 1) & 1;
+    }, 1000);
+  }
 
   const gestureState = createGestureState();
   const controls = createControlSystem({ pivot: sceneSys.pivot, gestureState });
@@ -161,6 +208,13 @@ async function bootstrap() {
   // moving average dips for >3 s.  Saves the reviewer from "this demo is
   // laggy on my laptop" without forcing them to find Settings → Perf.
   const perfBanner = createPerfBanner({ settings });
+
+  // -- Mouse + keyboard fallback for opening panels --
+  // Reviewers without a webcam, on a phone, or who simply prefer a mouse
+  // would otherwise be stuck after START.  See viz/mouse-fallback.js.
+  const mouseFallback = createMouseFallback({
+    camera: sceneSys.camera, panels, fullscreen, gestureState,
+  });
   function applySettings(s, key) {
     if (key === '*' || key === 'showSkeleton') skeleton.setVisible(s.showSkeleton);
     if (key === '*' || key === 'showHud') {
@@ -215,6 +269,7 @@ async function bootstrap() {
 
   function frame() {
     perfBanner.tick();          // sample render fps every frame
+    mouseFallback.tick();       // arbitrate mouse-mode vs hand-mode
     controls.update();
     panels.update();
     cursor.update();
@@ -226,13 +281,14 @@ async function bootstrap() {
     }
 
     if (gestureState.pinchStartEdge && gestureState.handPresent) {
-      const hovering = cursor.getHoveredIndex() !== -1;
-      if (hovering && !fullscreen.isOpen() && !gestureState.cursorAtEdge) {
-        cursor.firePinchClick();
-      } else {
-        controls.startDrag();
-        dragArmed = true;
-      }
+      // Pinch is now drag-only — panels are opened exclusively by the
+      // dwell-click (hover-and-hold) path.  A pinch that lands mid-hover
+      // used to fire an instant click and the panel would pop open with
+      // zero hold time, which read as a misfire.  Routing every pinch to
+      // a rotation drag instead means the only way to open a panel is
+      // the deliberate dwell — fewer false opens, more predictable feel.
+      controls.startDrag();
+      dragArmed = true;
     }
     if (gestureState.pinchEndEdge && dragArmed) {
       controls.endDrag();
@@ -244,9 +300,14 @@ async function bootstrap() {
     }
 
     sceneSys.render();
-    requestAnimationFrame(frame);
+    if (sessionStarted) requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+
+  // Splash-screen idle: render ONE frame so the scene is not black behind
+  // the start overlay, then suspend.  The full 60 fps loop and the 1 Hz
+  // panel-refresh interval both start only after the user clicks START.
+  let sessionStarted = false;
+  sceneSys.render();
 
   startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
@@ -314,6 +375,12 @@ async function bootstrap() {
     });
     overlay.classList.add('hidden');
     onboarding.show();
+
+    // Engines on: start the 60 fps render loop and the 1 Hz panel refresh
+    // interval now that the user has consented.  Idempotent if re-clicked.
+    sessionStarted = true;
+    startPerturbInterval();
+    requestAnimationFrame(frame);
   });
 
   // Telemetry recorder — exposed for debugging via R key or window.__telemetry

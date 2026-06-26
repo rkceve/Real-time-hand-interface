@@ -35,9 +35,9 @@ The aim isn't to replace a Bloomberg terminal. The aim is to show that single-RG
 
 | Gesture | Detection | Action |
 |---|---|---|
-| **Point** — index extended, others curled | finger-extension cosine + hysteresis gate (≈330 ms enter / 800 ms exit) | Cursor appears and follows your index fingertip in 2D |
-| **Pinch** over a panel — thumb tip to index tip distance below 0.30 of hand size | hysteresis pinch detector (0.30 close / 0.45 open) | Open that panel's detail view |
-| **Pinch** in empty space + drag | same detector, routed by cursor hover state | Yaw-rotate the sphere (palm-x driven, ≈400° per full screen swing) |
+| **Point** — index extended, others curled | finger-extension cosine + hysteresis gate | Cursor appears and follows your index fingertip in 2D |
+| **Hover + hold** over a panel ~0.9 s | dwell timer on cursor while `hoveredIdx` stays fixed | Open that panel's detail view (the only way — intentionally) |
+| **Pinch** anywhere + drag | hysteresis pinch detector (0.30 close / 0.45 open) | Yaw-rotate the sphere (palm-x driven, ≈400° per full screen swing) |
 | **Spread 5 fingers** and hold 1.2 s | all-extended hysteresis gate + local dwell timer | Close the detail view (Esc also works) |
 
 The cursor itself is a small Iron-Man-style reticle with five visible states (lost / idle / hover / arming / fired / cooldown). It magnetically snaps to whichever panel is nearest; once it's on one, the snap radius widens to 1.7× so adjacent panels don't fight for it.
@@ -58,7 +58,7 @@ What is **NOT** an off-the-shelf library — all written from scratch in `src/`:
 - **OneEuro filter** (`smoothing.js`) — port of the CHI 2012 paper, retuned for 8–15 fps input to `minCutoff = 1.5`, `beta = 0.07`.
 - **Cursor state machine** (`cursor.js`) — 5 states, sticky magnet, speed-adaptive pull, velocity extrapolation gated by a speed floor, 1.5 px deadzone, render-rate lerp, dwell-click fallback.
 - **Hysteresis gates** (`finger.js`) — pointing / palm-open / pinch each have separate enter / exit frame counts, so transient mis-detections never flip a mode.
-- **Pinch-drag routing** (`main.js`) — pinch over a panel fires a click, pinch in empty space starts a drag (yaw only).
+- **Pinch-drag routing** (`main.js`) — every pinch starts a yaw-rotate drag; panel opens are reserved for the dwell-click path so a mid-hover pinch never opens a panel by accident.
 - **15 → 60 fps interpolation** — between MediaPipe detections (≈15 fps on integrated GPUs) the cursor lerps and velocity-extrapolates so the rendered motion feels 60 fps.
 - **Panel canvas rendering** (`panels.js`) — every panel is a `CanvasTexture`; live tick simulation perturbs each name's % change every 2 s and redraws.
 
@@ -146,7 +146,7 @@ A few decisions that took more iteration than the file structure suggests.
 
 **OneEuro re-tuning for 8–15 fps.** The reference OneEuro hyper-parameters from the CHI 2012 paper assume 60 fps input. At 15 fps, the same `minCutoff = 0.35, beta = 0.04` produces a perceptible lag (~450 ms time constant exceeds the 67 ms inter-frame gap). Retuning to `minCutoff = 1.5, beta = 0.07` keeps the noise floor low while letting fast movement through one detection at a time. The "Cursor Sensitivity" slider in the settings panel does **not** touch OneEuro — it scales the centred cursor output by `0.8×`–`2.0×` (default 0.85, measured sweet spot). The smoothing constants stay fixed.
 
-**Pinch routing — click vs. drag.** A pinch in empty space rotates the sphere; a pinch over a panel opens that panel. The naive implementation checks the hover state at every frame, which lets a hand that drifts onto a panel mid-drag accidentally fire a click on release. The fix is to latch the routing decision at the pinch-START edge (`gestureState.pinchStartEdge`) and ignore hover changes for the duration of that pinch. See `main.js` line 220-ish.
+**Pinch is drag-only; panels open via dwell-click.** An earlier build routed a pinch-while-hovering to an instant click — which read as a misfire because the panel popped open with zero hold time the moment the user's thumb touched their index. The current behaviour is unambiguous: every pinch (`gestureState.pinchStartEdge`) starts a yaw-rotate drag, and the *only* path to open a panel is the cursor's dwell-click (~0.9 s hover-and-hold). Two modalities, no overlap, no accidental opens.
 
 **Cap-weighted aggregates.** Sector summaries (AVG CHANGE, AVG P/E, AVG DIV Y) are computed as `Σ(value × marketCap) / Σ(marketCap)`, not arithmetic mean. With a naive mean, a small-cap +5 % move pulls the sector display while AAPL is flat — mathematically wrong for the information the user wants. Real terminals weight by cap; matching that is a free credibility win (`util/fmt.js`).
 

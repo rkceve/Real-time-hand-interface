@@ -67,6 +67,13 @@ html, body {
 
 body { cursor: none; }
 
+/* Mouse-mode: restored when the user moves the mouse and no hand has been
+   detected for ~1 s.  See viz/mouse-fallback.js.  Re-enables the system
+   cursor and a subtle scene-wide highlight when a panel is under hover or
+   keyboard focus so reviewers without a webcam still have a working UI. */
+body.mouse-mode { cursor: default; }
+body.mouse-mode.panel-hover { cursor: pointer; }
+
 #app {
   position: relative;
   width: 100vw;
@@ -511,11 +518,11 @@ body { cursor: none; }
 .fs-list .chg.down { color: var(--down); }
 
 /* 52-week range bar — Bloomberg-style horizontal track + tick.
-   Domain is [−low52%, +high52%] with current price implicitly at 0;
-   tick position therefore encodes "how close to high vs low" today.
-   Replaces the prior "−x/+y" two-number text which forced readers to
-   mentally combine two values — the bar shows the same information
-   visually in one glance, which is the entire point. */
+   Track ends represent the 52w low (left) and 52w high (right); the
+   tick marks where today's price sits inside that range, computed as
+   pctToLow52 / (pctToLow52 + pctToHigh52).  See viz/fullscreen.js
+   rangeBar() and scripts/enrich-stocks.py for the field semantics
+   (both pctTo* fields are positive distance-to-extremum values). */
 .fs-list .rngbar {
   position: relative;
   height: 18px;

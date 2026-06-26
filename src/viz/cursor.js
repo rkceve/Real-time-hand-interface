@@ -16,11 +16,14 @@
 // External API:
 //   cursor.update();
 //   cursor.getHoveredIndex();
-//   cursor.firePinchClick();
 //   cursor.setGain(value);
+//
+// Panels are opened exclusively by dwell-click (DWELL_MS hold over a
+// panel).  An earlier pinch-click path was removed because it could fire
+// a 0 ms open mid-hover, which read as an accidental misfire.
 
 import * as THREE from 'three';
-import { playTick, playSelect } from './audio.js';
+import { playSelect } from './audio.js';
 
 const DWELL_MS = 900;
 const FIRED_MS = 120;
@@ -125,7 +128,7 @@ export function createCursor({ camera, panels, gestureState, onClick }) {
     }
   }
 
-  function fire(idx, source) {
+  function fire(idx) {
     if (idx < 0 || idx >= panels.panels.length) return;
     if (state === 'fired' || state === 'cooldown') return;
     setState('fired');
@@ -133,9 +136,10 @@ export function createCursor({ camera, panels, gestureState, onClick }) {
     el.classList.remove('click-anim');
     void el.offsetWidth;
     el.classList.add('click-anim');
-    if (source === 'pinch') playSelect();
-    else playTick();
-    if (onClick) onClick(panels.panels[idx], source);
+    // Dwell is the only fire path now and it always opens a panel —
+    // use the 2-tone open chime instead of the brief click tick.
+    playSelect();
+    if (onClick) onClick(panels.panels[idx], 'dwell');
   }
 
   function update() {
@@ -324,9 +328,15 @@ export function createCursor({ camera, panels, gestureState, onClick }) {
 
     setDwell(Math.min(1, dwellMs / DWELL_MS));
 
-    if (dwellMs >= DWELL_MS) fire(hoveredIdx, 'dwell');
+    if (dwellMs >= DWELL_MS) fire(hoveredIdx);
 
-    // -- Latency sample --
+    // -- Cursor freshness sample --
+    // This is render-frame-time minus tracker-write-time, i.e. how stale
+    // the cursor's anchor is RELATIVE TO the most recent tracker write.
+    // It is NOT full detect-to-render latency — that would also include
+    // camera capture time and MediaPipe inference time, neither of which
+    // is observable from this layer.  Renamed from latency* to make the
+    // semantics honest to readers cross-checking the HUD against code.
     const lag = now - gestureState.lastUpdateMs;
     if (lag >= 0 && lag < 2000) {
       latencyRing[latencyIdx] = lag;
@@ -335,15 +345,9 @@ export function createCursor({ camera, panels, gestureState, onClick }) {
     }
     if ((++latencyComputeCounter % 30) === 0 && latencyCount > 0) {
       const arr = Array.from(latencyRing.subarray(0, latencyCount)).sort((a, b) => a - b);
-      gestureState.latencyMedianMs = arr[Math.floor(arr.length * 0.5)];
-      gestureState.latencyP95Ms = arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))];
+      gestureState.cursorFreshnessMedianMs = arr[Math.floor(arr.length * 0.5)];
+      gestureState.cursorFreshnessP95Ms = arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))];
     }
-  }
-
-  function firePinchClick() {
-    if (gestureState.cursorAtEdge) return;
-    if (hoveredIdx === -1) return;
-    fire(hoveredIdx, 'pinch');
   }
 
   function setGain(g) {
@@ -354,7 +358,6 @@ export function createCursor({ camera, panels, gestureState, onClick }) {
     update,
     getHoveredIndex: () => hoveredIdx,
     getState: () => state,
-    firePinchClick,
     setGain,
     el,
   };

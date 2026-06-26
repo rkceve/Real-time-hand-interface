@@ -28,14 +28,14 @@ export function createGestureState() {
     palmX: 0.5,
     palmY: 0.5,
 
-    // -- Latency instrumentation (filled by cursor.js render loop) --
-    // Measures "detect-to-render" lag = render frame time minus tracker
-    // last-write time.  Captures the freshness of the cursor relative to
-    // MediaPipe's last detection write.  Not the full input-to-photon path
-    // (which would need camera capture timestamps), but the dominant
-    // user-perceived lag on a 15 fps source.
-    latencyMedianMs: 0,
-    latencyP95Ms: 0,
+    // -- Cursor freshness instrumentation (filled by cursor.js render loop) --
+    // Measures how stale the rendered cursor anchor is relative to the most
+    // recent tracker write — render frame time minus tracker last-write
+    // time.  Does NOT include camera capture time or MediaPipe inference
+    // time; full input-to-photon = freshness + ~1 camera frame + inference.
+    // Renamed from "latency*" so HUD readers don't misinterpret the value.
+    cursorFreshnessMedianMs: 0,
+    cursorFreshnessP95Ms: 0,
 
     // -- Data source metadata (read from stocks.json at boot) --
     dataSource: '',

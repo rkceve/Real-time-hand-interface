@@ -31,10 +31,6 @@ function beep({ freq = 800, duration = 0.04, type = 'sine', gain = 0.12 } = {}) 
   osc.stop(t + duration + 0.02);
 }
 
-export function playTick() {
-  beep({ freq: 1320, duration: 0.05, type: 'square', gain: 0.10 });
-}
-
 export function playSelect() {
   beep({ freq: 880, duration: 0.07, type: 'sine', gain: 0.13 });
   setTimeout(() => beep({ freq: 1320, duration: 0.06, type: 'sine', gain: 0.10 }), 35);

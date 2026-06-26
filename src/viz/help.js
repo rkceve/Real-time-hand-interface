@@ -15,12 +15,12 @@ export function createHelpOverlay() {
         </svg>
       </div>
       <div class="help-text">
-        <span class="key">POINT</span>
-        <span class="desc">Index finger as cursor</span>
+        <span class="key">POINT · HOLD</span>
+        <span class="desc">Index finger as cursor — hold on a panel to open</span>
       </div>
     </div>
 
-    <div class="help-row" data-mode="pinch-click">
+    <div class="help-row" data-mode="pinch-drag">
       <div class="help-icon">
         <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round">
           <circle cx="14" cy="20" r="3.4"/>
@@ -29,8 +29,8 @@ export function createHelpOverlay() {
         </svg>
       </div>
       <div class="help-text">
-        <span class="key">PINCH</span>
-        <span class="desc">Open panel · drag to rotate</span>
+        <span class="key">PINCH · DRAG</span>
+        <span class="desc">Rotate the sphere</span>
       </div>
     </div>
 
@@ -52,7 +52,7 @@ export function createHelpOverlay() {
   function setFullscreenActive(active) {
     el.querySelector('[data-mode="palm-exit"]').classList.toggle('emphasized', active);
     el.querySelector('[data-mode="point"]').classList.toggle('dim', active);
-    el.querySelector('[data-mode="pinch-click"]').classList.toggle('dim', active);
+    el.querySelector('[data-mode="pinch-drag"]').classList.toggle('dim', active);
   }
 
   function setVisible(visible) {

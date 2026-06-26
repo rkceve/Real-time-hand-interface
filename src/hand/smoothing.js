@@ -67,26 +67,6 @@ export class OneEuroFilter2D {
   }
 }
 
-// Scalar exponential approach for non-angular values (scale, pinch ratio, etc.)
-export class ScalarApproach {
-  constructor(alpha = 0.18) {
-    this.alpha = alpha;
-    this.value = null;
-  }
-
-  step(target) {
-    if (this.value === null) {
-      this.value = target;
-    } else {
-      this.value += (target - this.value) * this.alpha;
-    }
-    return this.value;
-  }
-
-  reset(to = null) {
-    this.value = to;
-  }
-}
 
 function wrapAngle(a) {
   return ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;

@@ -18,6 +18,18 @@
 import { playExit } from './audio.js';
 import { fmtPct, fmtCap, fmtEarn, rvolBin, capWeightedAvg } from '../util/fmt.js';
 
+// HTML-escape user-data substrings before they meet innerHTML.  Today the
+// data is a checked-in JSON, but scripts/fetch-real-data.js overwrites that
+// file from a remote CSV (Stooq) and a future maintainer may switch feeds —
+// any unsanitised name/id then becomes stored XSS.  Tiny mapping function;
+// safer than relying on the data source forever staying friendly.
+function esc(v) {
+  if (v == null) return '';
+  return String(v).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+}
+
 const EXIT_DWELL_MS = 1200;        // bumped from 850 — relaxed-palm rest pose
                                     // is too easy to trigger accidentally at 850
 const OPEN_GUARD_MS = 1500;
@@ -87,22 +99,27 @@ export function createFullscreen({ gestureState }) {
         <div>Chg %</div>
       </div>`;
 
-    // 52w range bar: horizontal track from low52 (−x%) to high52 (+y%) anchored
-    // at "current" = 0. A tick marker on the zero line shows where price sits
-    // today. Replicates Bloomberg's "52w hi/lo bar" widget. The percentages
-    // already encode position because they're "% above/below current" — so
-    // tick at exactly 50% width is mathematically correct given a symmetric
-    // [−low52, +high52] domain centred on current.
+    // 52-week range bar: horizontal track whose left end is the 52w low and
+    // right end is the 52w high, with a tick marking where today's price
+    // sits inside that range.  pctToLow52 and pctToHigh52 are both POSITIVE
+    // percents (distance-to-extremum; see scripts/enrich-stocks.py docstring)
+    // so tick fraction = pctToLow52 / (pctToLow52 + pctToHigh52) means "how
+    // much of the year's drawdown room sits below today's price".  Tick at
+    // 50% means today is the midpoint between the year's low and high; tick
+    // at 80% means today is near the high.  The lo/hi labels are signed
+    // (−x%, +y%) to read as "downside / upside room remaining".
     function rangeBar(s) {
-      if (s.high52 == null || s.low52 == null) return '<span class="range-na">—</span>';
-      const span = s.low52 + s.high52;            // total range width %
-      const tickPct = (s.low52 / span) * 100;     // where "current" sits in the bar
+      const lo = s.pctToLow52, hi = s.pctToHigh52;
+      if (lo == null || hi == null) return '<span class="range-na">—</span>';
+      const span = lo + hi;
+      if (span <= 0) return '<span class="range-na">—</span>';
+      const tickPct = (lo / span) * 100;
       return `
         <div class="rngbar">
           <div class="rngbar-track"></div>
           <div class="rngbar-tick" style="left:${tickPct.toFixed(1)}%"></div>
-          <div class="rngbar-lbl rngbar-lo">${fmtPct(-s.low52, 0)}</div>
-          <div class="rngbar-lbl rngbar-hi">${fmtPct(s.high52, 0)}</div>
+          <div class="rngbar-lbl rngbar-lo">${fmtPct(-lo, 0)}</div>
+          <div class="rngbar-lbl rngbar-hi">${fmtPct(hi, 0)}</div>
         </div>`;
     }
 
@@ -111,15 +128,15 @@ export function createFullscreen({ gestureState }) {
       const rbin = rvolBin(rvol);
       return `
       <div class="row">
-        <div class="ticker">${s.id}</div>
-        <div class="name">${s.name}</div>
+        <div class="ticker">${esc(s.id)}</div>
+        <div class="name">${esc(s.name)}</div>
         <div class="bar"><div class="bar-fill" style="width:${(s.marketCap / maxCap * 100).toFixed(1)}%"></div></div>
         <div class="cap">${fmtCap(s.marketCap)}</div>
         <div class="pe">${s.pe != null ? s.pe.toFixed(1) : '—'}</div>
         <div class="div">${s.divY != null ? s.divY.toFixed(2) + '%' : '—'}</div>
         <div class="range">${rangeBar(s)}</div>
-        <div class="rvol rvol-${rbin}">${rvol != null ? rvol.toFixed(2) + '×' : '—'}</div>
-        <div class="earn">${fmtEarn(s.earnDays)}</div>
+        <div class="rvol rvol-${esc(rbin)}">${rvol != null ? rvol.toFixed(2) + '×' : '—'}</div>
+        <div class="earn">${fmtEarn(s.earnDate)}</div>
         <div class="chg ${s.changePct >= 0 ? 'up' : 'down'}">${fmtPct(s.changePct)}</div>
       </div>`;
     }).join('');
